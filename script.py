@@ -1,12 +1,13 @@
 import requests
 from bs4 import BeautifulSoup
-from collections import defaultdict
 from datetime import datetime, timedelta
+from collections import defaultdict
+import time
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0"
+    "User-Agent": "Mozilla/5.0",
+    "Referer": "https://gall.dcinside.com/"
 }
-
 
 def fetch(url):
     try:
@@ -36,9 +37,10 @@ def crawl(base_url):
         if not rows:
             break
 
-        valid = False
+        found = False
 
         for row in rows:
+
             writer = row.select_one(".gall_writer")
             date = row.select_one(".gall_date")
 
@@ -55,26 +57,12 @@ def crawl(base_url):
 
             if t >= cutoff:
                 count[nick] += 1
-                valid = True
+                found = True
 
-        if not valid:
+        if not found:
             break
 
         page += 1
+        time.sleep(0.2)
 
     return sorted(count.items(), key=lambda x: x[1], reverse=True)[:50]
-
-
-def extract_gallery_name(url):
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=5)
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        meta = soup.find("meta", {"name": "description"})
-        if meta:
-            return meta.get("content", "").split("-")[0].strip()
-
-    except:
-        pass
-
-    return "갤러리"
