@@ -1,10 +1,15 @@
+/* =========================
+   기본
+========================= */
+
 body {
     margin: 0;
     background: #ffffff;
     font-family: Arial, sans-serif;
+    color: #000;
 }
 
-/* 전체 중앙 */
+/* 중앙 레이아웃 */
 .wrapper {
     min-height: 100vh;
     display: flex;
@@ -17,11 +22,13 @@ body {
 .title {
     font-size: 28px;
     font-weight: 700;
-    color: #000;
     margin-bottom: 20px;
 }
 
-/* 검색 박스 */
+/* =========================
+   검색 영역
+========================= */
+
 .search-box {
     display: flex;
     align-items: center;
@@ -31,10 +38,11 @@ body {
 
     background: #111;
     border-radius: 999px;
+
     padding: 8px 12px;
 }
 
-/* input */
+/* 입력 */
 .search-box input {
     flex: 1;
     border: none;
@@ -42,6 +50,7 @@ body {
 
     background: transparent;
     color: #fff;
+
     font-size: 14px;
 }
 
@@ -78,15 +87,24 @@ body {
     position: relative;
 }
 
+/* 돋보기 */
 .icon {
     font-size: 16px;
 }
 
-/* 로딩 점 */
+/* =========================
+   로딩 점 (핵심 수정)
+========================= */
+
 .dots {
     position: absolute;
     display: flex;
     gap: 4px;
+}
+
+/* hidden 반드시 필요 */
+.hidden {
+    display: none !important;
 }
 
 .dots span {
@@ -97,8 +115,13 @@ body {
     animation: blink 1s infinite;
 }
 
-.dots span:nth-child(2) { animation-delay: 0.2s; }
-.dots span:nth-child(3) { animation-delay: 0.4s; }
+.dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
 
 @keyframes blink {
     0%, 100% { opacity: 0.2; }
@@ -106,15 +129,15 @@ body {
 }
 
 /* =========================
-   결과 카드 UI (핵심)
-   ========================= */
+   결과 영역
+========================= */
 
 #result {
     width: 520px;
     margin-top: 20px;
 }
 
-/* 카드 */
+/* 결과 카드 */
 .result-card {
     background: #fff;
     border: 1px solid #ddd;
@@ -136,10 +159,9 @@ body {
 .gallery-name {
     font-size: 18px;
     font-weight: 700;
-    color: #000;
 }
 
-/* 기간 */
+/* 날짜 */
 .date-range {
     font-size: 12px;
     color: #666;
@@ -181,8 +203,6 @@ body {
     padding: 10px 6px;
 
     font-size: 13px;
-    color: #000;
-
     border-bottom: 1px solid #f0f0f0;
 }
 

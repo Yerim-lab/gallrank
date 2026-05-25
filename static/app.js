@@ -1,21 +1,13 @@
 const btn = document.getElementById("searchBtn");
 const input = document.getElementById("urlInput");
-const result = document.getElementById("result");
-
-const icon = btn.querySelector(".icon");
+const resultBox = document.getElementById("result");
 const dots = document.getElementById("loadingDots");
 
 btn.addEventListener("click", async () => {
     const url = input.value.trim();
     if (!url) return;
 
-    btn.disabled = true;
-
-    // 상태 전환: 아이콘 숨기고 점 표시
-    icon.style.display = "none";
-    dots.classList.remove("hidden");
-
-    result.innerHTML = "";
+    setLoading(true);
 
     try {
         const res = await fetch("/search", {
@@ -28,21 +20,63 @@ btn.addEventListener("click", async () => {
 
         const data = await res.json();
 
-        if (!res.ok) throw new Error(data.error || "error");
-
-        result.innerHTML = `
-            <h3>${data.title}</h3>
-            <ul>
-                ${data.items.map(i => `<li>${i}</li>`).join("")}
-            </ul>
-        `;
+        renderResult(data);
 
     } catch (err) {
-        result.innerHTML = `<p>${err.message}</p>`;
+        console.error(err);
+        resultBox.innerHTML = "<div>에러 발생</div>";
     } finally {
-        btn.disabled = false;
-
-        icon.style.display = "block";
-        dots.classList.add("hidden");
+        setLoading(false);
     }
 });
+
+
+function renderResult(data) {
+    const list = Array.isArray(data.result) ? data.result : [];
+
+    resultBox.innerHTML = `
+        <div class="result-card">
+
+            <div class="result-header">
+                <div class="gallery-name">${data.gallery || "-"}</div>
+                <div class="date-range">${data.range || "-"}</div>
+
+                <button class="copy-btn" onclick="copyResult()">복사</button>
+            </div>
+
+            <div class="table-box">
+                <div class="table-row table-head">
+                    <span>순위</span>
+                    <span>닉네임</span>
+                    <span>글수</span>
+                    <span>지분</span>
+                </div>
+
+                ${list.map(item => `
+                    <div class="table-row">
+                        <span>${item.rank ?? "-"}</span>
+                        <span>${item.nick ?? "-"}</span>
+                        <span>${item.posts ?? "-"}</span>
+                        <span>${item.share ?? "-"}</span>
+                    </div>
+                `).join("")}
+
+            </div>
+        </div>
+    `;
+}
+
+
+function setLoading(isLoading) {
+    if (isLoading) {
+        dots.classList.remove("hidden");
+    } else {
+        dots.classList.add("hidden");
+    }
+}
+
+
+function copyResult() {
+    const text = document.getElementById("result").innerText;
+    navigator.clipboard.writeText(text);
+}
