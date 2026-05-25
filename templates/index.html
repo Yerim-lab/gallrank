@@ -7,25 +7,33 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+
 <body>
 
-<div class="container">
+<div class="wrapper">
 
-    <h1>갤창랭킹</h1>
+    <h1 class="title">갤창랭킹</h1>
 
-    <div class="input-box">
+    <!-- 검색 영역 -->
+    <div class="search-box">
+
         <input id="urlInput" type="text" placeholder="URL 입력">
-        <button id="searchBtn">
-            🔍
+
+        <div class="divider"></div>
+
+        <button id="pasteBtn" class="icon-btn">📋</button>
+
+        <button id="searchBtn" class="icon-btn search-btn">
+            <span class="icon">🔍</span>
+
+            <div class="dots hidden" id="loadingDots">
+                <span></span><span></span><span></span>
+            </div>
         </button>
+
     </div>
 
-    <div id="loading" class="loading hidden">
-        <div class="dot"></div>
-        <div class="dot"></div>
-        <div class="dot"></div>
-    </div>
-
+    <!-- 결과 영역 -->
     <div id="result"></div>
 
 </div>
