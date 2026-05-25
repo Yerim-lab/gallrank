@@ -1,4 +1,6 @@
-import requests
+if __name__ == "__main__":
+
+ts
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from collections import defaultdict
