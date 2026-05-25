@@ -1,50 +1,231 @@
 body {
     margin: 0;
-    background: #CAC4CE;
-    font-family: Arial;
+    background: #ffffff;
+    font-family: Arial, sans-serif;
 }
 
-.header {
-    text-align: center;
-    padding: 20px;
-    color: #232B57;
-}
-
-.container {
+/* 중앙 정렬 */
+.wrapper {
+    height: 100vh;
     display: flex;
     flex-direction: column;
+    justify-content: center;
     align-items: center;
 }
 
+/* 타이틀 */
+.title {
+    color: #000;
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 20px;
+}
+
+/* 검색 박스 */
 .search-box {
     display: flex;
-    gap: 10px;
-    margin-top: 30px;
+    align-items: center;
+
+    background: #111;
+    border-radius: 999px;
+
+    padding: 8px 12px;
+
+    width: 520px;
+    height: 52px;
 }
 
+/* input */
 .search-box input {
-    width: 400px;
-    padding: 10px;
+    flex: 1;
+    border: none;
+    outline: none;
+
+    background: transparent;
+    color: #fff;
+
+    font-size: 14px;
 }
 
-.search-box button {
+.search-box input::placeholder {
+    color: #aaa;
+}
+
+/* 구분선 */
+.divider {
+    width: 1px;
+    height: 24px;
+    background: #444;
+    margin: 0 10px;
+}
+
+/* 버튼 */
+.icon-btn {
+    background: transparent;
+    border: none;
+    color: #fff;
+
     width: 40px;
-}
+    height: 40px;
 
-.board {
-    margin-top: 20px;
-    width: 600px;
-    background: #232B57;
-    color: white;
-    padding: 20px;
-}
-
-.hidden {
-    display: none;
-}
-
-.row {
     display: flex;
-    justify-content: space-between;
-    padding: 5px 0;
+    justify-content: center;
+    align-items: center;
+
+    cursor: pointer;
+}
+
+/* 검색 버튼 영역 */
+.search {
+    position: relative;
+}
+
+/* 돋보기 */
+.icon {
+    font-size: 16px;
+}
+
+/* 점 애니메이션 */
+.dots {
+    position: absolute;
+    display: flex;
+    gap: 4px;
+}
+
+.dots span {
+    width: 6px;
+    height: 6px;
+    background: #fff;
+    border-radius: 50%;
+    animation: blink 1s infinite;
+}
+
+.dots span:nth-child(2) { animation-delay: 0.2s; }
+.dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes blink {
+    0%, 100% { opacity: 0.2; }
+    50% { opacity: 1; }
+}
+
+/* 결과 */
+#result {
+    margin-top: 20px;
+    color: #000;
+    width: 520px;
+}body {
+    margin: 0;
+    background: #ffffff;
+    font-family: Arial, sans-serif;
+}
+
+/* 중앙 정렬 */
+.wrapper {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+/* 타이틀 */
+.title {
+    color: #000;
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 20px;
+}
+
+/* 검색 박스 */
+.search-box {
+    display: flex;
+    align-items: center;
+
+    background: #111;
+    border-radius: 999px;
+
+    padding: 8px 12px;
+
+    width: 520px;
+    height: 52px;
+}
+
+/* input */
+.search-box input {
+    flex: 1;
+    border: none;
+    outline: none;
+
+    background: transparent;
+    color: #fff;
+
+    font-size: 14px;
+}
+
+.search-box input::placeholder {
+    color: #aaa;
+}
+
+/* 구분선 */
+.divider {
+    width: 1px;
+    height: 24px;
+    background: #444;
+    margin: 0 10px;
+}
+
+/* 버튼 */
+.icon-btn {
+    background: transparent;
+    border: none;
+    color: #fff;
+
+    width: 40px;
+    height: 40px;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    cursor: pointer;
+}
+
+/* 검색 버튼 영역 */
+.search {
+    position: relative;
+}
+
+/* 돋보기 */
+.icon {
+    font-size: 16px;
+}
+
+/* 점 애니메이션 */
+.dots {
+    position: absolute;
+    display: flex;
+    gap: 4px;
+}
+
+.dots span {
+    width: 6px;
+    height: 6px;
+    background: #fff;
+    border-radius: 50%;
+    animation: blink 1s infinite;
+}
+
+.dots span:nth-child(2) { animation-delay: 0.2s; }
+.dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes blink {
+    0%, 100% { opacity: 0.2; }
+    50% { opacity: 1; }
+}
+
+/* 결과 */
+#result {
+    margin-top: 20px;
+    color: #000;
+    width: 520px;
 }

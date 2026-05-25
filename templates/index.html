@@ -1,69 +1,35 @@
 ﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>갤창랭킹</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>갤창랭킹</title>
 
-<link rel="stylesheet" href="/static/style.css">
-<script defer src="/static/app.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-
 <body>
 
-<header class="header">
+<div class="container">
+
     <h1>갤창랭킹</h1>
-</header>
 
-<!-- 검색 -->
-<div class="search-wrap">
-    <div class="search-box">
-
+    <div class="input-box">
         <input id="urlInput" type="text" placeholder="URL 입력">
-
-        <button id="pasteBtn" class="icon-btn">📋</button>
-
-        <div class="divider"></div>
-
-        <button id="searchBtn" class="icon-btn search-btn">
-
-            <svg class="icon" viewBox="0 0 24 24">
-                <circle cx="11" cy="11" r="7"></circle>
-                <line x1="16.5" y1="16.5" x2="21" y2="21"></line>
-            </svg>
-
-            <div class="dots">
-                <span></span><span></span><span></span>
-            </div>
-
+        <button id="searchBtn">
+            🔍
         </button>
-
     </div>
+
+    <div id="loading" class="loading hidden">
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+    </div>
+
+    <div id="result"></div>
+
 </div>
 
-<!-- 🔥 상단 광고 -->
-<div class="ad-slot top-ad">ADVERTISEMENT</div>
-
-<main class="center">
-
-    <div id="board" class="board">
-
-        <!-- 복사 버튼 -->
-        <button id="copyBtn" class="copy-btn">복사</button>
-
-        <div class="notice">
-            <div id="galleryTitle" class="gallery-title"></div>
-            <div id="dateRange" class="date-range"></div>
-        </div>
-
-        <div id="result"></div>
-
-    </div>
-
-</main>
-
-<!-- 🔥 하단 광고 -->
-<div class="ad-slot bottom-ad">ADVERTISEMENT</div>
-
+<script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
