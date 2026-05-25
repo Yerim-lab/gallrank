@@ -1,6 +1,4 @@
-if __name__ == "__main__":
-
-ts
+import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -42,7 +40,6 @@ def crawl(base_url):
         found = False
 
         for row in rows:
-
             writer = row.select_one(".gall_writer")
             date = row.select_one(".gall_date")
 
