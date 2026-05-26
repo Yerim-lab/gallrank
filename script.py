@@ -10,7 +10,8 @@ HEADERS = {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/120.0 Safari/537.36"
-    )
+    ),
+    "Referer": "https://gall.dcinside.com/"
 }
 
 # ---------------------------
@@ -23,13 +24,23 @@ def normalize_url(url: str) -> str:
 
 
 # ---------------------------
-# 실제 갤러리 타입 판별
+# 갤러리 타입 + id 추출
 # ---------------------------
 def resolve_gallery(url: str):
-    r = requests.get(url, headers=HEADERS, timeout=10, allow_redirects=True)
+    session = requests.Session()
+    session.headers.update(HEADERS)
+
+    r = session.get(url, allow_redirects=True, timeout=10)
     final_url = r.url
 
     soup = BeautifulSoup(r.text, "lxml")
+
+    # id 추출
+    m = re.search(r"id=([a-zA-Z0-9_]+)", final_url)
+    gid = m.group(1) if m else None
+
+    if not gid:
+        raise Exception("갤러리 ID 추출 실패")
 
     path = urlparse(final_url).path
 
@@ -40,20 +51,13 @@ def resolve_gallery(url: str):
     else:
         gtype = "board"
 
-    # id 추출
-    m = re.search(r"id=([a-zA-Z0-9_]+)", final_url)
-    gid = m.group(1) if m else None
-
-    if not gid:
-        raise Exception("갤러리 ID 파싱 실패")
-
-    return gid, gtype, soup
+    return gid, gtype, soup, session
 
 
 # ---------------------------
 # base url 생성
 # ---------------------------
-def get_base_url(gid: str, gtype: str):
+def get_base_url(gid, gtype):
     return f"https://gall.dcinside.com/{gtype}/board/lists/?id={gid}"
 
 
@@ -91,18 +95,18 @@ def is_filtered_row(row):
 # 날짜 파싱
 # ---------------------------
 def parse_post_date(row):
-    date_el = row.select_one(".gall_date")
-    if not date_el:
+    el = row.select_one(".gall_date")
+    if not el:
         return None
 
-    title = date_el.get("title")
+    title = el.get("title")
     if title:
         try:
             return datetime.strptime(title, "%Y-%m-%d %H:%M:%S")
         except:
             pass
 
-    text = date_el.get_text(strip=True)
+    text = el.get_text(strip=True)
     now = datetime.now()
 
     if re.match(r"^\d{1,2}:\d{2}$", text):
@@ -123,13 +127,10 @@ def parse_post_date(row):
 
 
 # ---------------------------
-# writer 파싱 (핵심 수정)
+# writer 파싱 (핵심 안정화)
 # ---------------------------
 def parse_writer(row):
-    el = row.select_one(".gall_writer")
-
-    if not el:
-        el = row.select_one(".ub-writer")
+    el = row.select_one(".gall_writer") or row.select_one(".ub-writer")
 
     if not el:
         return "ㅇㅇ"
@@ -138,18 +139,29 @@ def parse_writer(row):
         el.get("data-nick")
         or el.get("data-user_nick")
         or el.get_text(strip=True)
-        or "ㅇㅇ"
     )
 
-    nick = nick.strip()
+    if not nick:
+        return "ㅇㅇ"
 
-    return nick if nick else "ㅇㅇ"
+    return nick.strip()
+
+
+# ---------------------------
+# row 판별 (ktwiz 해결 핵심)
+# ---------------------------
+def is_post_row(row):
+    if row.select_one(".gall_tit"):
+        return True
+    if row.select_one(".gall_subject"):
+        return True
+    return False
 
 
 # ---------------------------
 # 크롤링
 # ---------------------------
-def crawl_base(base_url, cutoff, counter):
+def crawl_base(base_url, cutoff, counter, session):
     page = 1
     stop = False
 
@@ -157,17 +169,19 @@ def crawl_base(base_url, cutoff, counter):
         url = f"{base_url}&page={page}"
 
         try:
-            r = requests.get(url, headers=HEADERS, timeout=10)
+            r = session.get(url, timeout=10)
             if r.status_code != 200:
                 break
         except:
             break
 
         soup = BeautifulSoup(r.text, "lxml")
-        rows = soup.select("tr.ub-content")
 
+        rows = soup.select("tr.ub-content")
         if not rows:
             rows = soup.select("tr")
+
+        rows = [r for r in rows if is_post_row(r)]
 
         if not rows:
             break
@@ -197,11 +211,11 @@ def crawl_base(base_url, cutoff, counter):
 def crawl_gallery(user_url: str):
     url = normalize_url(user_url)
 
-    gid, gtype, soup = resolve_gallery(url)
+    gid, gtype, soup, session = resolve_gallery(url)
 
     now = datetime.now()
 
-    # 🔥 정확한 기준: 7일 전 "00:00"
+    # 7일 전 00:00 기준
     cutoff = (now - timedelta(days=7)).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
@@ -211,7 +225,7 @@ def crawl_gallery(user_url: str):
     counter = Counter()
     gallery_name = get_gallery_name(soup)
 
-    crawl_base(base_url, cutoff, counter)
+    crawl_base(base_url, cutoff, counter, session)
 
     total = sum(counter.values())
 
@@ -227,7 +241,6 @@ def crawl_gallery(user_url: str):
             "count": count,
             "share": share
         })
-
         rank += 1
 
     return {
