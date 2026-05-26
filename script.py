@@ -19,31 +19,40 @@ HEADERS = {
 # -----------------------
 def get_time_range(days=7):
     now = datetime.now()
-    start = now - timedelta(days=days)
-    return start, now
+    return now - timedelta(days=days), now
 
 
 # -----------------------
-# DC 시간 파싱
+# 갤러리 이름 추출
 # -----------------------
-def parse_dc_date(text: str):
-    if not text:
+def extract_gallery_name(html):
+    soup = BeautifulSoup(html, "html.parser")
+    meta = soup.select_one("meta[name='description']")
+
+    if not meta:
         return None
 
-    text = text.strip()
-    now = datetime.now()
+    content = meta.get("content", "")
+    return content.split(" - ")[0].strip() if " - " in content else content.strip()
+
+
+# -----------------------
+# 날짜 파싱 (title 우선)
+# -----------------------
+def parse_date(date_el):
+    if not date_el:
+        return None
 
     try:
+        title = date_el.get("title")
+        if title:
+            return datetime.strptime(title, "%Y-%m-%d %H:%M:%S")
+
+        text = date_el.text.strip()
         if re.match(r"^\d{1,2}:\d{2}$", text):
             h, m = map(int, text.split(":"))
+            now = datetime.now()
             return now.replace(hour=h, minute=m, second=0, microsecond=0)
-
-        if re.match(r"^\d{4}\.\d{1,2}\.\d{1,2}$", text):
-            return datetime.strptime(text, "%Y.%m.%d")
-
-        if re.match(r"^\d{1,2}\.\d{1,2}$", text):
-            m, d = map(int, text.split("."))
-            return datetime(now.year, m, d)
 
     except:
         return None
@@ -52,22 +61,33 @@ def parse_dc_date(text: str):
 
 
 # -----------------------
+# 제외 필터
+# -----------------------
+def is_excluded(row):
+    subject = row.select_one(".gall_subject")
+    if not subject:
+        return False
+
+    text = subject.get_text(strip=True)
+    return text in ["설문", "AD", "공지"]
+
+
+# -----------------------
 # URL 정규화
 # -----------------------
-def normalize_url(url: str):
+def normalize_url(url):
     parsed = urlparse(url)
     path = parsed.path
     qs = parse_qs(parsed.query)
 
     gid = qs.get("id", [None])[0]
+    if not gid:
+        m = re.search(r"id=([^&/]+)", url)
+        if m:
+            gid = m.group(1)
 
     if not gid:
-        match = re.search(r"id=([^&/]+)", url)
-        if match:
-            gid = match.group(1)
-
-    if not gid:
-        raise ValueError("Invalid URL")
+        raise ValueError("invalid url")
 
     if "/mgallery" in path:
         base = "https://gall.dcinside.com/mgallery/board/lists?id="
@@ -84,13 +104,13 @@ def normalize_url(url: str):
 # -----------------------
 def crawl(url):
     list_url = normalize_url(url)
-
     start, end = get_time_range(7)
 
     page = 1
     MAX_PAGE = 200
 
     user_count = defaultdict(int)
+    gallery_name = None
 
     while page <= MAX_PAGE:
         try:
@@ -101,8 +121,11 @@ def crawl(url):
         if res.status_code != 200:
             break
 
+        if not gallery_name:
+            gallery_name = extract_gallery_name(res.text)
+
         soup = BeautifulSoup(res.text, "html.parser")
-        rows = soup.select("tr.ub-content")
+        rows = soup.select("tr")
 
         if not rows:
             break
@@ -110,12 +133,8 @@ def crawl(url):
         found = False
 
         for row in rows:
-            # 공지/광고/설문 제외
-            num_el = row.select_one(".gall_num")
-            if num_el:
-                t = num_el.text.strip()
-                if t in ["공지", "AD", "설문"]:
-                    continue
+            if is_excluded(row):
+                continue
 
             date_el = row.select_one(".gall_date")
             nick_el = row.select_one(".nickname")
@@ -123,16 +142,15 @@ def crawl(url):
             if not date_el or not nick_el:
                 continue
 
-            dt = parse_dc_date(date_el.text)
+            dt = parse_date(date_el)
             if not dt:
                 continue
 
             if start <= dt <= end:
                 found = True
-                nick = nick_el.text.strip()
+                nick = nick_el.get_text(strip=True)
                 user_count[nick] += 1
 
-        # 완전 종료 조건 (과도한 페이지 탐색 방지)
         if not found:
             break
 
@@ -140,19 +158,20 @@ def crawl(url):
 
     total = sum(user_count.values())
 
-    result = []
-    for i, (nick, cnt) in enumerate(
-        sorted(user_count.items(), key=lambda x: x[1], reverse=True),
-        1
-    ):
-        result.append({
+    data = [
+        {
             "rank": i,
-            "nickname": nick,
-            "count": cnt,
-            "share": round(cnt / total * 100, 2) if total else 0
-        })
+            "nickname": k,
+            "count": v,
+            "share": round(v / total * 100, 2) if total else 0
+        }
+        for i, (k, v) in enumerate(sorted(user_count.items(), key=lambda x: x[1], reverse=True), 1)
+    ]
 
-    return result
+    return {
+        "gallery": gallery_name,
+        "data": data
+    }
 
 
 @app.route("/")
@@ -161,9 +180,8 @@ def index():
 
 
 @app.route("/api/crawl", methods=["POST"])
-def api_crawl():
+def api():
     url = request.json.get("url")
-
     if not url:
         return jsonify({"error": "no url"}), 400
 

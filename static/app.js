@@ -1,4 +1,4 @@
-let lastResult = [];
+let last = null;
 
 async function runCrawl() {
     const url = document.getElementById("urlInput").value.trim();
@@ -6,28 +6,22 @@ async function runCrawl() {
 
     setLoading(true);
 
-    try {
-        const res = await fetch("/api/crawl", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url })
-        });
+    const res = await fetch("/api/crawl", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ url })
+    });
 
-        const data = await res.json();
-        lastResult = Array.isArray(data) ? data : [];
-
-        render(lastResult);
-
-    } catch (e) {
-        console.error(e);
-    }
+    const data = await res.json();
+    last = data;
 
     setLoading(false);
+    render(data);
 }
 
 function setLoading(state) {
-    const icon = document.querySelector(".icon-search");
-    const dots = document.querySelector(".loading-dots");
+    const icon = document.querySelector(".icon");
+    const dots = document.querySelector(".dots");
 
     icon.style.display = state ? "none" : "block";
     dots.style.display = state ? "flex" : "none";
@@ -35,18 +29,19 @@ function setLoading(state) {
 
 function render(data) {
     const box = document.getElementById("resultBox");
-    const tbody = document.getElementById("resultBody");
+    const tbody = document.getElementById("tbody");
 
     tbody.innerHTML = "";
 
-    if (!data.length) {
+    if (!data.data.length) {
         box.classList.add("hidden");
         return;
     }
 
-    document.getElementById("metaInfo").innerText = "최근 7일 기준";
+    document.getElementById("meta").innerText =
+        `${data.gallery || "갤러리"} · 최근 7일`;
 
-    data.forEach(r => {
+    data.data.forEach(r => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
             <td>${r.rank}</td>
@@ -63,7 +58,7 @@ function render(data) {
 function copyResult() {
     let text = "순위\t닉네임\t글수\t지분\n";
 
-    lastResult.forEach(r => {
+    last.data.forEach(r => {
         text += `${r.rank}\t${r.nickname}\t${r.count}\t${r.share}%\n`;
     });
 
