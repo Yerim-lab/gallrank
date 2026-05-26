@@ -3,8 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 from collections import Counter
 from datetime import datetime, timedelta
-from urllib.parse import urlparse, parse_qs
-
+from urllib.parse import urlparse
 
 HEADERS = {
     "User-Agent": (
@@ -14,41 +13,25 @@ HEADERS = {
     )
 }
 
-
 # ---------------------------
-# URL normalize
+# URL 정규화
 # ---------------------------
-def normalize_url(url: str):
-    url = url.strip()
-
-    if url.startswith("http://") or url.startswith("https://"):
-        return url
-    if url.startswith("//"):
-        return "https:" + url
-    if "dcinside.com" in url:
-        return "https://" + url
-
+def normalize_url(url: str) -> str:
+    if not url.startswith("http"):
+        url = "https://" + url
     return url
 
 
 # ---------------------------
-# resolve + gallery type
+# 실제 갤러리 타입 판별
 # ---------------------------
-def resolve_dcinside(url: str):
-    url = normalize_url(url)
-
+def resolve_gallery(url: str):
     r = requests.get(url, headers=HEADERS, timeout=10, allow_redirects=True)
     final_url = r.url
 
-    parsed = urlparse(final_url)
+    soup = BeautifulSoup(r.text, "lxml")
 
-    qs = parse_qs(parsed.query)
-    gid = qs.get("id", [None])[0]
-
-    if not gid:
-        gid = parsed.path.strip("/").split("/")[-1]
-
-    path = parsed.path
+    path = urlparse(final_url).path
 
     if "/mini/" in path:
         gtype = "mini"
@@ -57,23 +40,33 @@ def resolve_dcinside(url: str):
     else:
         gtype = "board"
 
-    # 축약 갤러리 보정 (DC 구조 특성)
-    if "krstock" in final_url:
-        gtype = "mgallery"
+    # id 추출
+    m = re.search(r"id=([a-zA-Z0-9_]+)", final_url)
+    gid = m.group(1) if m else None
 
-    return gtype, gid, final_url
+    if not gid:
+        raise Exception("갤러리 ID 파싱 실패")
+
+    return gid, gtype, soup
 
 
 # ---------------------------
-# base url
+# base url 생성
 # ---------------------------
-def build_base_url(gtype, gid):
-    if gtype == "mini":
-        return f"https://gall.dcinside.com/mini/board/lists/?id={gid}"
-    elif gtype == "mgallery":
-        return f"https://gall.dcinside.com/mgallery/board/lists/?id={gid}"
-    else:
-        return f"https://gall.dcinside.com/board/lists/?id={gid}"
+def get_base_url(gid: str, gtype: str):
+    return f"https://gall.dcinside.com/{gtype}/board/lists/?id={gid}"
+
+
+# ---------------------------
+# 갤러리 이름
+# ---------------------------
+def get_gallery_name(soup):
+    meta = soup.select_one('meta[name="title"]')
+    if meta:
+        return meta.get("content", "").replace(
+            " - 커뮤니티 포털 디시인사이드", ""
+        ).strip()
+    return "갤러리"
 
 
 # ---------------------------
@@ -98,18 +91,18 @@ def is_filtered_row(row):
 # 날짜 파싱
 # ---------------------------
 def parse_post_date(row):
-    el = row.select_one(".gall_date")
-    if not el:
+    date_el = row.select_one(".gall_date")
+    if not date_el:
         return None
 
-    title = el.get("title")
+    title = date_el.get("title")
     if title:
         try:
             return datetime.strptime(title, "%Y-%m-%d %H:%M:%S")
         except:
             pass
 
-    text = el.get_text(strip=True)
+    text = date_el.get_text(strip=True)
     now = datetime.now()
 
     if re.match(r"^\d{1,2}:\d{2}$", text):
@@ -130,22 +123,27 @@ def parse_post_date(row):
 
 
 # ---------------------------
-# 핵심: 유저 식별 로직 (FIX POINT)
+# writer 파싱 (핵심 수정)
 # ---------------------------
-def extract_user_key(writer):
-    if not writer:
+def parse_writer(row):
+    el = row.select_one(".gall_writer")
+
+    if not el:
+        el = row.select_one(".ub-writer")
+
+    if not el:
         return "ㅇㅇ"
 
-    nick = writer.get("data-nick") or writer.get_text(strip=True) or "ㅇㅇ"
-    uid = writer.get("data-user_id") or writer.get("data-uid") or ""
+    nick = (
+        el.get("data-nick")
+        or el.get("data-user_nick")
+        or el.get_text(strip=True)
+        or "ㅇㅇ"
+    )
 
     nick = nick.strip()
 
-    # uid가 있으면 절대 이걸 기준으로 묶어야 함
-    if uid:
-        return f"{nick}({uid})"
-
-    return nick
+    return nick if nick else "ㅇㅇ"
 
 
 # ---------------------------
@@ -153,6 +151,7 @@ def extract_user_key(writer):
 # ---------------------------
 def crawl_base(base_url, cutoff, counter):
     page = 1
+    stop = False
 
     while page <= 100:
         url = f"{base_url}&page={page}"
@@ -165,8 +164,11 @@ def crawl_base(base_url, cutoff, counter):
             break
 
         soup = BeautifulSoup(r.text, "lxml")
-
         rows = soup.select("tr.ub-content")
+
+        if not rows:
+            rows = soup.select("tr")
+
         if not rows:
             break
 
@@ -174,17 +176,17 @@ def crawl_base(base_url, cutoff, counter):
             if is_filtered_row(row):
                 continue
 
-            post_date = parse_post_date(row)
-            if not post_date:
+            dt = parse_post_date(row)
+
+            if dt and dt < cutoff:
+                stop = True
                 continue
 
-            if post_date < cutoff:
-                continue
+            nickname = parse_writer(row)
+            counter[nickname] += 1
 
-            writer = row.select_one(".gall_writer") or row.select_one(".ub-writer")
-
-            key = extract_user_key(writer)
-            counter[key] += 1
+        if stop:
+            break
 
         page += 1
 
@@ -192,22 +194,22 @@ def crawl_base(base_url, cutoff, counter):
 # ---------------------------
 # main
 # ---------------------------
-def crawl_gallery(url: str):
-    gtype, gid, final_url = resolve_dcinside(url)
+def crawl_gallery(user_url: str):
+    url = normalize_url(user_url)
 
-    if not gid:
-        raise ValueError("갤러리 ID 추출 실패")
-
-    base_url = build_base_url(gtype, gid)
+    gid, gtype, soup = resolve_gallery(url)
 
     now = datetime.now()
 
-    # 7일 전 00시 기준
+    # 🔥 정확한 기준: 7일 전 "00:00"
     cutoff = (now - timedelta(days=7)).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
 
+    base_url = get_base_url(gid, gtype)
+
     counter = Counter()
+    gallery_name = get_gallery_name(soup)
 
     crawl_base(base_url, cutoff, counter)
 
@@ -216,20 +218,23 @@ def crawl_gallery(url: str):
     result = []
     rank = 1
 
-    for user, count in counter.most_common():
+    for nickname, count in counter.most_common():
+        share = round((count / total) * 100, 2) if total else 0
+
         result.append({
             "rank": rank,
-            "user": user,
+            "nickname": nickname,
             "count": count,
-            "share": round(count / total * 100, 2) if total else 0
+            "share": share
         })
+
         rank += 1
 
     return {
+        "gallery": gallery_name,
         "type": gtype,
-        "gallery": gid,
-        "final_url": final_url,
-        "cutoff": cutoff.strftime("%Y-%m-%d %H:%M:%S"),
+        "gid": gid,
         "total": total,
+        "cutoff": cutoff.strftime("%Y-%m-%d %H:%M:%S"),
         "result": result
     }
