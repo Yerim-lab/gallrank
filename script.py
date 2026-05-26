@@ -15,112 +15,37 @@ HEADERS = {
 
 
 # ---------------------------
-# URL 정규화 (모바일 + 축약 대응)
+# URL 정규화
 # ---------------------------
 def normalize_url(url: str):
     url = url.strip()
-
     if not url.startswith("http"):
         url = "https://" + url
-
     return url
 
 
 # ---------------------------
-# gallery id 추출 (모든 케이스 대응)
+# gallery id 추출 (모든 케이스)
 # ---------------------------
 def extract_gallery_id(url: str):
     url = normalize_url(url)
 
-    # 1) query id
     qs = parse_qs(urlparse(url).query)
     if "id" in qs:
         return qs["id"][0]
 
-    # 2) path 기반 (/board/xxx, /mgallery/xxx, /mini/xxx)
-    m = re.search(r"dcinside\.com/(?:board|mgallery|mini)/([a-zA-Z0-9_]+)", url)
-    if m:
-        return m.group(1)
+    patterns = [
+        r"dcinside\.com/(?:board|mgallery|mini)/([a-zA-Z0-9_]+)",
+        r"m\.dcinside\.com/board/([a-zA-Z0-9_]+)",
+        r"dcinside\.com/([a-zA-Z0-9_]+)$"
+    ]
 
-    # 3) 모바일 (/board/xxx)
-    m = re.search(r"m\.dcinside\.com/board/([a-zA-Z0-9_]+)", url)
-    if m:
-        return m.group(1)
-
-    # 4) 최후: /xxx 단축 URL
-    m = re.search(r"dcinside\.com/([a-zA-Z0-9_]+)$", url)
-    if m:
-        return m.group(1)
+    for p in patterns:
+        m = re.search(p, url)
+        if m:
+            return m.group(1)
 
     return None
-
-
-# ---------------------------
-# 갤러리 타입 자동 판별
-# ---------------------------
-def detect_gallery_type(soup, gid):
-    text = soup.get_text(" ", strip=True)
-
-    if "미니 갤러리" in text:
-        return "mini"
-
-    if "마이너 갤러리" in text:
-        return "mgallery"
-
-    # 기본은 board
-    return "board"
-
-
-# ---------------------------
-# base url 생성
-# ---------------------------
-def get_base_urls(gid):
-    return {
-        "board": [
-            f"https://gall.dcinside.com/board/lists/?id={gid}"
-        ],
-        "mgallery": [
-            f"https://gall.dcinside.com/mgallery/board/lists/?id={gid}"
-        ],
-        "mini": [
-            f"https://gall.dcinside.com/mini/board/lists/?id={gid}"
-        ]
-    }
-
-
-# ---------------------------
-# 갤러리 이름 파싱 개선
-# ---------------------------
-def get_gallery_name(soup):
-    meta = soup.select_one('meta[name="title"]')
-    if meta:
-        title = meta.get("content", "")
-        title = title.replace(" - 커뮤니티 포털 디시인사이드", "")
-        return title.strip()
-
-    h1 = soup.select_one("h1")
-    if h1:
-        return h1.get_text(strip=True)
-
-    return "갤러리"
-
-
-# ---------------------------
-# 필터
-# ---------------------------
-def is_filtered_row(row):
-    if "notice" in (row.get("class") or []):
-        return True
-
-    num = row.select_one(".gall_num")
-    if num and num.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
-        return True
-
-    subject = row.select_one(".gall_subject")
-    if subject and subject.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
-        return True
-
-    return False
 
 
 # ---------------------------
@@ -145,36 +70,79 @@ def parse_post_date(row):
         h, m = map(int, text.split(":"))
         return now.replace(hour=h, minute=m, second=0, microsecond=0)
 
-    m = re.match(r"^(\d{1,2})\.(\d{1,2})$", text)
-    if m:
-        mo, d = map(int, m.groups())
-        return datetime(now.year, mo, d)
-
     return None
 
 
 # ---------------------------
-# writer 파싱 개선 (undefined 해결)
+# writer 파싱 안정화
 # ---------------------------
 def parse_writer(row):
-    writer = row.select_one(".gall_writer") or row.select_one(".ub-writer")
-
-    if not writer:
+    w = row.select_one(".gall_writer") or row.select_one(".ub-writer")
+    if not w:
         return "ㅇㅇ"
 
-    nick = (
-        writer.get("data-nick")
-        or writer.get_text(strip=True)
-    )
-
+    nick = w.get("data-nick") or w.get_text(strip=True)
     if not nick:
         return "ㅇㅇ"
 
-    # dcinside 익명 처리
-    if "ㅇㅇ" in nick:
-        return "ㅇㅇ"
-
     return nick.strip()
+
+
+# ---------------------------
+# 필터
+# ---------------------------
+def is_filtered(row):
+    if "notice" in (row.get("class") or []):
+        return True
+
+    num = row.select_one(".gall_num")
+    if num and num.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
+        return True
+
+    subject = row.select_one(".gall_subject")
+    if subject and subject.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
+        return True
+
+    return False
+
+
+# ---------------------------
+# base url 후보 (핵심)
+# ---------------------------
+def build_candidates(gid):
+    return [
+        ("board", f"https://gall.dcinside.com/board/lists/?id={gid}"),
+        ("mgallery", f"https://gall.dcinside.com/mgallery/board/lists/?id={gid}"),
+        ("mini", f"https://gall.dcinside.com/mini/board/lists/?id={gid}"),
+        ("mobile", f"https://m.dcinside.com/board/{gid}")
+    ]
+
+
+# ---------------------------
+# 유효 엔드포인트 탐색
+# ---------------------------
+def resolve_endpoint(gid):
+    for gtype, url in build_candidates(gid):
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=10)
+            if r.status_code != 200:
+                continue
+
+            soup = BeautifulSoup(r.text, "lxml")
+
+            rows = soup.select("tr.ub-content")
+
+            # mobile fallback
+            if gtype == "mobile" and not rows:
+                rows = soup.select("div.gall-detail-lst li")
+
+            if len(rows) > 3:
+                return gtype, url, soup
+
+        except:
+            continue
+
+    return None, None, None
 
 
 # ---------------------------
@@ -202,7 +170,7 @@ def crawl_base(base_url, cutoff, counter):
             break
 
         for row in rows:
-            if is_filtered_row(row):
+            if is_filtered(row):
                 continue
 
             dt = parse_post_date(row)
@@ -220,7 +188,20 @@ def crawl_base(base_url, cutoff, counter):
 
 
 # ---------------------------
-# main
+# 갤러리 이름
+# ---------------------------
+def get_gallery_name(soup):
+    meta = soup.select_one('meta[name="title"]')
+    if meta:
+        return meta.get("content", "").replace(
+            " - 커뮤니티 포털 디시인사이드", ""
+        ).strip()
+
+    return "갤러리"
+
+
+# ---------------------------
+# MAIN
 # ---------------------------
 def crawl_gallery(user_url: str):
     user_url = normalize_url(user_url)
@@ -231,47 +212,37 @@ def crawl_gallery(user_url: str):
 
     now = datetime.now()
 
-    # 🔥 핵심 수정: "7일 전 00시 기준"
+    # 7일 전 00시 기준
     cutoff = (now - timedelta(days=7)).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
 
     counter = Counter()
 
-    # 1차 페이지로 타입 감지
-    base_guess = f"https://gall.dcinside.com/board/lists/?id={gid}"
-    try:
-        r = requests.get(base_guess, headers=HEADERS, timeout=10)
-        soup = BeautifulSoup(r.text, "lxml")
-        gtype = detect_gallery_type(soup, gid)
-        gallery_name = get_gallery_name(soup)
-    except:
-        gtype = "board"
-        gallery_name = gid
+    gtype, base_url, soup = resolve_endpoint(gid)
 
-    base_urls = get_base_urls(gid)[gtype]
+    if not base_url:
+        raise Exception("갤러리 엔드포인트를 찾을 수 없음")
 
-    for base_url in base_urls:
-        try:
-            crawl_base(base_url, cutoff, counter)
-        except:
-            continue
+    gallery_name = get_gallery_name(soup)
+
+    crawl_base(base_url, cutoff, counter)
 
     total = sum(counter.values())
 
     result = []
     for i, (nick, cnt) in enumerate(counter.most_common(), 1):
-        share = round((cnt / total) * 100, 2) if total else 0
         result.append({
             "rank": i,
             "nickname": nick,
             "count": cnt,
-            "share": share
+            "share": round((cnt / total) * 100, 2) if total else 0
         })
 
     return {
         "gallery": gallery_name,
         "id": gid,
+        "type": gtype,
         "total": total,
         "cutoff": cutoff.strftime("%Y-%m-%d %H:%M:%S"),
         "result": result
