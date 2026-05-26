@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>갤창랭킹</title>
-
     <link rel="stylesheet" href="/static/style.css">
 </head>
 
@@ -13,12 +12,10 @@
 
     <div class="title">갤창랭킹</div>
 
-    <div class="search-box">
-
+    <div class="search">
         <input id="urlInput" placeholder="갤러리 URL 입력">
 
         <button onclick="runCrawl()">
-
             <svg viewBox="0 0 24 24" class="icon">
                 <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm11 3-6-6"/>
             </svg>
@@ -26,16 +23,14 @@
             <div class="dots">
                 <span></span><span></span><span></span>
             </div>
-
         </button>
-
     </div>
 
-    <div id="resultBox" class="hidden">
+    <div id="result" class="hidden">
 
         <div class="header">
             <div id="meta"></div>
-            <button onclick="copyResult()">copy</button>
+            <button onclick="copy()">copy</button>
         </div>
 
         <table>

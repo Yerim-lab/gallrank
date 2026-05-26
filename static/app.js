@@ -14,23 +14,15 @@ async function runCrawl() {
         });
 
         const text = await res.text();
-
         console.log("STATUS:", res.status);
         console.log("RAW:", text);
 
-        let data;
-        try {
-            data = JSON.parse(text);
-        } catch (e) {
-            console.error("JSON PARSE ERROR");
-            setLoading(false);
-            return;
-        }
+        const data = JSON.parse(text);
 
         last = data;
 
         if (data.error) {
-            alert("ERROR: " + data.error);
+            alert(data.error);
             setLoading(false);
             return;
         }
@@ -38,7 +30,7 @@ async function runCrawl() {
         render(data);
 
     } catch (e) {
-        console.error("FETCH FAIL:", e);
+        console.error(e);
     }
 
     setLoading(false);
@@ -55,14 +47,13 @@ function setLoading(state) {
 
 
 function render(data) {
-    const box = document.getElementById("resultBox");
+    const box = document.getElementById("result");
     const tbody = document.getElementById("tbody");
 
     tbody.innerHTML = "";
 
-    if (!data.data || !data.data.length) {
-        box.classList.add("hidden");
-        alert("결과 없음 (크롤링 실패 or 차단 가능)");
+    if (!data.data.length) {
+        alert("결과 없음");
         return;
     }
 
@@ -84,14 +75,14 @@ function render(data) {
 }
 
 
-function copyResult() {
-    if (!last || !last.data) return;
+function copy() {
+    if (!last) return;
 
-    let text = "순위\t닉네임\t글수\t지분\n";
+    let t = "순위\t닉네임\t글수\t지분\n";
 
     last.data.forEach(r => {
-        text += `${r.rank}\t${r.nickname}\t${r.count}\t${r.share}%\n`;
+        t += `${r.rank}\t${r.nickname}\t${r.count}\t${r.share}%\n`;
     });
 
-    navigator.clipboard.writeText(text);
+    navigator.clipboard.writeText(t);
 }
