@@ -10,26 +10,24 @@ from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
-HEADERS = {
+session = requests.Session()
+session.headers.update({
     "User-Agent": "Mozilla/5.0",
     "Referer": "https://gall.dcinside.com/",
     "Accept-Language": "ko-KR,ko;q=0.9"
-}
-
-session = requests.Session()
-session.headers.update(HEADERS)
+})
 
 
 # -----------------------
 # 시간 범위
 # -----------------------
-def get_time_range(days=7):
+def get_range(days=7):
     now = datetime.now()
     return now - timedelta(days=days), now
 
 
 # -----------------------
-# 갤 이름 추출
+# 갤 이름
 # -----------------------
 def get_gallery_name(html):
     soup = BeautifulSoup(html, "html.parser")
@@ -38,11 +36,11 @@ def get_gallery_name(html):
         return None
 
     content = meta.get("content", "")
-    return content.split(" - ")[0].strip() if " - " in content else content.strip()
+    return content.split(" - ")[0].strip()
 
 
 # -----------------------
-# 날짜 파싱 (title 우선)
+# 날짜 파싱
 # -----------------------
 def parse_date(el):
     if not el:
@@ -59,7 +57,7 @@ def parse_date(el):
             now = datetime.now()
             return now.replace(hour=h, minute=m, second=0, microsecond=0)
 
-    except:
+    except Exception as e:
         return None
 
     return None
@@ -68,24 +66,22 @@ def parse_date(el):
 # -----------------------
 # 제외 필터
 # -----------------------
-def is_excluded(row):
-    subject = row.select_one(".gall_subject")
-    if not subject:
+def is_skip(row):
+    el = row.select_one(".gall_subject")
+    if not el:
         return False
 
-    text = subject.get_text(strip=True)
-    return text in ["공지", "AD", "설문"]
+    return el.get_text(strip=True) in ["공지", "AD", "설문"]
 
 
 # -----------------------
 # URL 정규화
 # -----------------------
-def normalize_url(url):
+def normalize(url):
     parsed = urlparse(url)
     path = parsed.path
-    qs = parse_qs(parsed.query)
 
-    gid = qs.get("id", [None])[0]
+    gid = parse_qs(parsed.query).get("id", [None])[0]
 
     if not gid:
         m = re.search(r"id=([^&/]+)", url)
@@ -93,7 +89,7 @@ def normalize_url(url):
             gid = m.group(1)
 
     if not gid:
-        raise ValueError("Invalid URL")
+        raise ValueError("invalid url")
 
     if "/mgallery" in path:
         base = "https://gall.dcinside.com/mgallery/board/lists?id="
@@ -106,53 +102,40 @@ def normalize_url(url):
 
 
 # -----------------------
-# 차단/이상 HTML 감지
-# -----------------------
-def is_blocked(html):
-    if not html:
-        return True
-
-    keywords = [
-        "접근", "차단", "보안", "automated", "restricted"
-    ]
-
-    return not ("ub-content" in html) or any(k in html.lower() for k in keywords)
-
-
-# -----------------------
 # 크롤러
 # -----------------------
 def crawl(url):
-    list_url = normalize_url(url)
+    list_url = normalize(url)
 
-    start, end = get_time_range(7)
+    start, end = get_range(7)
 
     page = 1
     MAX_PAGE = 200
 
-    user_count = defaultdict(int)
-    gallery_name = None
+    result_map = defaultdict(int)
+    gallery = None
 
     while page <= MAX_PAGE:
 
         try:
-            res = session.get(f"{list_url}&page={page}", timeout=5)
+            res = session.get(f"{list_url}&page={page}", timeout=7)
         except Exception as e:
-            print("REQUEST ERROR:", e)
-            break
+            return {"error": f"request_failed: {str(e)}"}
 
         if res.status_code != 200:
-            print("STATUS NOT OK:", res.status_code)
-            break
+            return {"error": f"status_code: {res.status_code}"}
 
         html = res.text
 
-        # 차단 체크
         if page == 1:
-            if is_blocked(html):
-                print("BLOCK OR INVALID HTML DETECTED")
-                break
-            gallery_name = get_gallery_name(html)
+            gallery = get_gallery_name(html)
+
+            # 차단 체크
+            if "ub-content" not in html:
+                return {
+                    "error": "blocked_or_invalid_html",
+                    "debug": html[:300]
+                }
 
         soup = BeautifulSoup(html, "html.parser")
         rows = soup.select("tr")
@@ -164,7 +147,7 @@ def crawl(url):
 
         for row in rows:
 
-            if is_excluded(row):
+            if is_skip(row):
                 continue
 
             date_el = row.select_one(".gall_date")
@@ -180,16 +163,16 @@ def crawl(url):
             if start <= dt <= end:
                 found = True
                 nick = nick_el.get_text(strip=True)
-                user_count[nick] += 1
+                result_map[nick] += 1
 
         if not found:
             break
 
         page += 1
 
-    total = sum(user_count.values())
+    total = sum(result_map.values())
 
-    result = [
+    data = [
         {
             "rank": i,
             "nickname": k,
@@ -197,19 +180,19 @@ def crawl(url):
             "share": round(v / total * 100, 2) if total else 0
         }
         for i, (k, v) in enumerate(
-            sorted(user_count.items(), key=lambda x: x[1], reverse=True),
+            sorted(result_map.items(), key=lambda x: x[1], reverse=True),
             1
         )
     ]
 
     return {
-        "gallery": gallery_name,
-        "data": result
+        "gallery": gallery,
+        "data": data
     }
 
 
 # -----------------------
-# Flask
+# API
 # -----------------------
 @app.route("/")
 def index():
@@ -218,15 +201,15 @@ def index():
 
 @app.route("/api/crawl", methods=["POST"])
 def api():
-    url = request.json.get("url")
-
-    if not url:
-        return jsonify({"error": "no url"}), 400
-
     try:
+        url = request.json.get("url")
+        if not url:
+            return jsonify({"error": "no url"}), 400
+
         return jsonify(crawl(url))
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
