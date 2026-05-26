@@ -3,7 +3,6 @@
 <head>
 
     <meta charset="UTF-8">
-
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>갤창랭킹</title>
@@ -14,9 +13,20 @@
     <!-- CSS -->
     <link rel="stylesheet" href="/static/style.css?v=777">
 
+    <!-- Google Ads -->
+    <script async src="https://pagead2.googletagmanager.com/gtag/js?id=AW-18190141007"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'AW-18190141007');
+    </script>
+
+    <!-- AdSense -->
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2538553648882016"
      crossorigin="anonymous"></script>
-     
+
 </head>
 
 <body>
@@ -36,32 +46,22 @@
 
             <div class="divider"></div>
 
-            <!-- Paste button -->
             <button id="pasteBtn" type="button" aria-label="붙여넣기">
-
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
                     fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-
                     <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-2" />
                     <rect x="4" y="2" width="12" height="16" rx="2" />
-
                 </svg>
-
             </button>
 
             <div class="divider"></div>
 
-            <!-- Search button -->
             <button id="searchBtn" type="button" aria-label="검색">
-
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
                     fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-
                     <circle cx="11" cy="11" r="7" />
                     <line x1="16.65" y1="16.65" x2="21" y2="21" />
-
                 </svg>
-
             </button>
 
         </div>
