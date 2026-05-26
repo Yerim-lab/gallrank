@@ -16,55 +16,61 @@ HEADERS = {
 
 
 # ---------------------------
-# URL 최종 리다이렉트 해석
+# URL resolve + type/id 추출
 # ---------------------------
-def resolve_final_url(url: str):
+def resolve_and_parse(url: str):
     try:
         r = requests.get(url, headers=HEADERS, timeout=10, allow_redirects=True)
-        return r.url, r.text
+        final_url = r.url
+        html = r.text
     except:
-        return url, None
+        final_url = url
+        html = None
 
-
-# ---------------------------
-# gallery id 추출 (최종 URL 기준)
-# ---------------------------
-def extract_gallery_id(url: str):
-    parsed = urlparse(url)
+    parsed = urlparse(final_url)
 
     qs = parse_qs(parsed.query)
+    gid = None
+
     if "id" in qs and qs["id"][0]:
-        return qs["id"][0]
+        gid = qs["id"][0]
+    else:
+        path = parsed.path.strip("/")
 
-    path = parsed.path.strip("/")
+        # mini/xxx
+        if path.startswith("mini/"):
+            gid = path.split("/")[1]
+        else:
+            gid = path.split("/")[0] if path else None
 
-    # /board/lists?id=xxx fallback
-    if parsed.path:
-        m = re.search(r"[?&]id=([a-zA-Z0-9_]+)", url)
-        if m:
-            return m.group(1)
+    # type 판별
+    if "/mini/" in parsed.path:
+        gtype = "mini"
+    elif "/mgallery/" in parsed.path:
+        gtype = "mgallery"
+    else:
+        # 축약 URL fallback (krstock 같은 경우 mgallery로 수렴)
+        if "krstock" in final_url:
+            gtype = "mgallery"
+        else:
+            gtype = "board"
 
-    # /krstock 같은 slug형
-    if path and "/" not in path:
-        return path
-
-    # /board/mgallery 구조
-    m = re.search(r"/(?:board|mgallery|mini)/([a-zA-Z0-9_]+)", parsed.path)
-    if m:
-        return m.group(1)
-
-    return None
+    return final_url, html, gtype, gid
 
 
 # ---------------------------
-# base urls
+# base url 생성 (단일)
 # ---------------------------
-def get_base_urls(gid: str):
-    return [
-        f"https://gall.dcinside.com/mgallery/board/lists/?id={gid}",
-        f"https://gall.dcinside.com/board/lists/?id={gid}",
-        f"https://gall.dcinside.com/mini/board/lists/?id={gid}",
-    ]
+def get_base_url(gtype, gid):
+    if not gid:
+        return None
+
+    if gtype == "mini":
+        return f"https://gall.dcinside.com/mini/board/lists/?id={gid}"
+    elif gtype == "mgallery":
+        return f"https://gall.dcinside.com/mgallery/board/lists/?id={gid}"
+    else:
+        return f"https://gall.dcinside.com/board/lists/?id={gid}"
 
 
 # ---------------------------
@@ -163,6 +169,9 @@ def crawl_base(base_url, cutoff, counter):
             else:
                 nickname = "ㅇㅇ"
 
+            if not nickname:
+                nickname = "ㅇㅇ"
+
             counter[nickname] += 1
 
         page += 1
@@ -172,32 +181,21 @@ def crawl_base(base_url, cutoff, counter):
 # main
 # ---------------------------
 def crawl_gallery(user_url: str):
-    final_url, html = resolve_final_url(user_url)
+    final_url, html, gtype, gid = resolve_and_parse(user_url)
 
-    gid = extract_gallery_id(final_url)
     if not gid:
-        raise ValueError("갤러리 ID 추출 실패 (리다이렉트 후 URL 확인 필요)")
+        raise ValueError("갤러리 ID 추출 실패")
+
+    base_url = get_base_url(gtype, gid)
+    if not base_url:
+        raise ValueError("base_url 생성 실패")
+
+    counter = Counter()
 
     now = datetime.now()
     cutoff = now - timedelta(days=7)
 
-    counter = Counter()
-
-    # base urls
-    base_urls = get_base_urls(gid)
-
-    # gallery name (최종 HTML에서 추출)
-    gallery_name = gid
-    if html:
-        soup = BeautifulSoup(html, "lxml")
-        meta = soup.select_one('meta[name="title"]')
-        if meta:
-            gallery_name = meta.get("content", "").replace(
-                " - 커뮤니티 포털 디시인사이드", ""
-            ).strip() or gid
-
-    for base_url in base_urls:
-        crawl_base(base_url, cutoff, counter)
+    crawl_base(base_url, cutoff, counter)
 
     total = sum(counter.values())
 
@@ -205,17 +203,17 @@ def crawl_gallery(user_url: str):
     rank = 1
 
     for nickname, count in counter.most_common():
-        share = round((count / total) * 100, 2) if total else 0
         result.append({
             "rank": rank,
             "nickname": nickname,
             "count": count,
-            "share": share
+            "share": round(count / total * 100, 2) if total else 0
         })
         rank += 1
 
     return {
-        "gallery": gallery_name,
+        "type": gtype,
+        "gallery": gid,
         "total": total,
         "cutoff": cutoff.strftime("%Y-%m-%d %H:%M:%S"),
         "result": result
