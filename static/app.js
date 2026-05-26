@@ -1,13 +1,14 @@
-const input = document.getElementById("urlInput");
-const button = document.getElementById("searchBtn");
-const result = document.getElementById("result");
+const input =
+    document.getElementById("urlInput");
+
+const button =
+    document.getElementById("searchBtn");
+
+const result =
+    document.getElementById("result");
 
 let loading = false;
 
-
-/* =========================
-   로딩 애니메이션
-========================= */
 
 function setLoading(state) {
     loading = state;
@@ -35,85 +36,27 @@ function setLoading(state) {
                 stroke="currentColor"
                 stroke-width="2"
             >
-                <circle cx="11" cy="11" r="7"></circle>
-                <line x1="16.65" y1="16.65" x2="21" y2="21"></line>
+                <circle
+                    cx="11"
+                    cy="11"
+                    r="7"
+                ></circle>
+
+                <line
+                    x1="16.65"
+                    y1="16.65"
+                    x2="21"
+                    y2="21"
+                ></line>
             </svg>
         `;
     }
 }
 
 
-/* =========================
-   숫자 포맷
-========================= */
-
-function numberFormat(num) {
-    return num.toLocaleString();
-}
-
-
-/* =========================
-   테이블 생성
-========================= */
-
-function createTable(data) {
-    let html = `
-        <div class="gallery-header">
-            <h2>${data.gallery}</h2>
-
-            <div class="gallery-total">
-                총 게시글 ${numberFormat(data.total)}개
-            </div>
-        </div>
-
-        <table class="rank-table">
-            <thead>
-                <tr>
-                    <th>순위</th>
-                    <th>닉네임</th>
-                    <th>글수</th>
-                    <th>지분</th>
-                </tr>
-            </thead>
-
-            <tbody>
-    `;
-
-    data.result.forEach(row => {
-        html += `
-            <tr>
-                <td>${row.rank}</td>
-
-                <td class="nickname">
-                    ${escapeHtml(row.nickname)}
-                </td>
-
-                <td>
-                    ${numberFormat(row.count)}
-                </td>
-
-                <td>
-                    ${row.share}%
-                </td>
-            </tr>
-        `;
-    });
-
-    html += `
-            </tbody>
-        </table>
-    `;
-
-    return html;
-}
-
-
-/* =========================
-   HTML Escape
-========================= */
-
 function escapeHtml(text) {
-    const div = document.createElement("div");
+    const div =
+        document.createElement("div");
 
     div.innerText = text;
 
@@ -121,112 +64,100 @@ function escapeHtml(text) {
 }
 
 
-/* =========================
-   에러 출력
-========================= */
-
-function showError(message) {
-    result.innerHTML = `
-        <div class="error-box">
-            ${escapeHtml(message)}
-        </div>
-    `;
-}
-
-
-/* =========================
-   검색 실행
-========================= */
-
 async function searchGallery() {
     if (loading) return;
 
     const url = input.value.trim();
 
     if (!url) {
-        showError("URL을 입력하세요.");
         return;
     }
 
     setLoading(true);
 
-    result.innerHTML = `
-        <div class="loading-text">
-            집계 중...
-        </div>
-    `;
+    result.innerHTML = "";
 
     try {
         const response = await fetch(
             `/api/rank?url=${encodeURIComponent(url)}`
         );
 
-        let data;
-
-        try {
-            data = await response.json();
-        } catch {
-            throw new Error(
-                "JSON 응답 파싱 실패"
-            );
-        }
+        const data =
+            await response.json();
 
         console.log(data);
 
-        if (!response.ok) {
-            throw new Error(
-                data.error || "서버 오류"
-            );
-        }
-
         if (data.error) {
-            throw new Error(data.error);
+            result.innerHTML = `
+                <div class="error-box">
+                    ${escapeHtml(data.error)}
+                </div>
+            `;
+
+            setLoading(false);
+
+            return;
         }
 
-        if (!data.result || !Array.isArray(data.result)) {
-            throw new Error(
-                "잘못된 응답 형식"
-            );
-        }
+        let html = `
+            <table class="rank-table">
 
-        result.innerHTML = createTable(data);
+                <thead>
+                    <tr>
+                        <th>순위</th>
+                        <th>닉네임</th>
+                        <th>글수</th>
+                        <th>지분</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+        `;
+
+        data.result.forEach(row => {
+            html += `
+                <tr>
+                    <td>${row.rank}</td>
+                    <td>
+                        ${escapeHtml(row.nickname)}
+                    </td>
+                    <td>${row.count}</td>
+                    <td>${row.share}%</td>
+                </tr>
+            `;
+        });
+
+        html += `
+                </tbody>
+            </table>
+        `;
+
+        result.innerHTML = html;
 
     } catch (error) {
         console.error(error);
 
-        showError(
-            error.message || "에러 발생"
-        );
-
-    } finally {
-        setLoading(false);
+        result.innerHTML = `
+            <div class="error-box">
+                ${escapeHtml(error.message)}
+            </div>
+        `;
     }
+
+    setLoading(false);
 }
 
-
-/* =========================
-   버튼 클릭
-========================= */
 
 button.addEventListener(
     "click",
     searchGallery
 );
 
-
-/* =========================
-   엔터 검색
-========================= */
-
-input.addEventListener("keydown", e => {
-    if (e.key === "Enter") {
-        searchGallery();
+input.addEventListener(
+    "keydown",
+    e => {
+        if (e.key === "Enter") {
+            searchGallery();
+        }
     }
-});
-
-
-/* =========================
-   초기 아이콘 세팅
-========================= */
-
-setLoading(false);
+);

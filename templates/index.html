@@ -1,7 +1,6 @@
 ﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
-
     <meta charset="UTF-8">
 
     <meta
@@ -13,79 +12,33 @@
 
     <link
         rel="stylesheet"
-        href="{{ url_for('static', filename='style.css') }}?v=10"
+        href="{{ url_for('static', filename='style.css') }}"
     >
-
 </head>
 
 <body>
+    <div class="container">
 
-<div class="wrapper">
+        <h1>갤창랭킹</h1>
 
-    <h1 class="title">
-        갤창랭킹
-    </h1>
+        <div class="search-box">
 
-    <div class="search-box">
-
-        <input
-            id="urlInput"
-            type="text"
-            placeholder="URL 입력"
-            autocomplete="off"
-        >
-
-        <div class="divider"></div>
-
-        <button
-            id="pasteBtn"
-            class="icon-btn"
-            type="button"
-        >
-
-            <svg
-                class="icon-svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
+            <input
+                type="text"
+                id="urlInput"
+                placeholder="URL 입력"
             >
-                <rect
-                    x="9"
-                    y="9"
-                    width="13"
-                    height="13"
-                    rx="2"
-                ></rect>
 
-                <path
-                    d="M5 15V5a2 2 0 0 1 2-2h10"
-                ></path>
-            </svg>
-
-        </button>
-
-        <button
-            id="searchBtn"
-            class="search-btn"
-            type="button"
-        >
-
-            <span
-                class="icon"
-                id="searchIcon"
-            >
+            <button id="searchBtn">
 
                 <svg
-                    class="icon-svg"
-                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
                     fill="none"
+                    viewBox="0 0 24 24"
                     stroke="currentColor"
                     stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
                 >
                     <circle
                         cx="11"
@@ -99,30 +52,20 @@
                         x2="21"
                         y2="21"
                     ></line>
+
                 </svg>
 
-            </span>
+            </button>
 
-            <div
-                class="dots"
-                id="loadingDots"
-            >
-                <span></span>
-                <span></span>
-                <span></span>
-            </div>
+        </div>
 
-        </button>
+        <div id="result"></div>
 
     </div>
 
-    <div id="result"></div>
-
-</div>
-
-<script
-    src="{{ url_for('static', filename='app.js') }}?v=10"
-></script>
+    <script
+        src="{{ url_for('static', filename='app.js') }}"
+    ></script>
 
 </body>
 </html>
