@@ -35,51 +35,32 @@ def resolve_url(url: str):
 
 
 # ---------------------------
-# gid 추출 (최종 URL 기준)
+# 갤러리 ID 추출
 # ---------------------------
-def extract_gallery_info(url: str):
+def extract_gid(url: str):
     url = resolve_url(url)
-
-    # mini
-    if "/mini/" in url:
-        m = re.search(r"id=([a-zA-Z0-9_]+)", url)
-        if m:
-            return m.group(1), "mini"
-
-    # mgallery
-    if "/mgallery/" in url:
-        m = re.search(r"id=([a-zA-Z0-9_]+)", url)
-        if m:
-            return m.group(1), "mgallery"
-
-    # board
-    if "/board/" in url:
-        m = re.search(r"id=([a-zA-Z0-9_]+)", url)
-        if m:
-            return m.group(1), "board"
-
-    # fallback (query 없을 수도 있음 → path에서 추출 시도)
     m = re.search(r"id=([a-zA-Z0-9_]+)", url)
-    if m:
-        return m.group(1), None
-
-    return None, None
+    return m.group(1) if m else None
 
 
 # ---------------------------
-# 갤러리 타입 판별
+# DCInside "진짜 리스트 페이지" 판별
 # ---------------------------
-def detect_gallery_type(gid: str, hint=None):
-    candidates = []
+def is_valid_gallery_page(html: str):
+    soup = BeautifulSoup(html, "lxml")
 
-    if hint in BASE:
-        candidates.append(hint)
+    # 핵심: 게시글 row 존재 여부
+    if soup.select_one("tr.ub-content"):
+        return True
 
+    return False
+
+
+# ---------------------------
+# 갤러리 타입 탐지 (probe only)
+# ---------------------------
+def detect_gallery_type(gid: str):
     for t in ["mini", "mgallery", "board"]:
-        if t not in candidates:
-            candidates.append(t)
-
-    for t in candidates:
         url = BASE[t].format(gid=gid)
 
         try:
@@ -90,20 +71,14 @@ def detect_gallery_type(gid: str, hint=None):
         if r.status_code != 200:
             continue
 
-        soup = BeautifulSoup(r.text, "lxml")
-        rows = soup.select("tr.ub-content")
-
-        if not rows:
-            rows = soup.select("tr")
-
-        if rows:
+        if is_valid_gallery_page(r.text):
             return t, url
 
     return None, None
 
 
 # ---------------------------
-# 갤러리 이름
+# 갤러리 이름 추출
 # ---------------------------
 def get_gallery_name(soup):
     meta = soup.select_one('meta[name="title"]')
@@ -122,6 +97,7 @@ def get_gallery_name(soup):
 # ---------------------------
 def is_filtered_row(row):
     classes = row.get("class") or []
+
     if "notice" in classes:
         return True
 
@@ -193,9 +169,6 @@ def crawl_base(base_url, cutoff, counter):
         rows = soup.select("tr.ub-content")
 
         if not rows:
-            rows = soup.select("tr")
-
-        if not rows:
             break
 
         page_has_in_range = False
@@ -232,12 +205,12 @@ def crawl_base(base_url, cutoff, counter):
 # 메인
 # ---------------------------
 def crawl_gallery(user_url: str):
-    gid, hint = extract_gallery_info(user_url)
+    gid = extract_gid(user_url)
 
     if not gid:
         raise Exception("갤러리 ID 추출 실패")
 
-    gtype, base_url = detect_gallery_type(gid, hint)
+    gtype, base_url = detect_gallery_type(gid)
 
     if not base_url:
         raise Exception("갤러리 타입 판별 실패")
