@@ -1,23 +1,10 @@
 const input = document.getElementById("urlInput");
-const searchBtn = document.getElementById("searchBtn");
 const pasteBtn = document.getElementById("pasteBtn");
+const searchBtn = document.getElementById("searchBtn");
 const result = document.getElementById("result");
-const status = document.getElementById("status");
 
+let latest = null;
 let loading = false;
-
-function setStatus(msg) {
-    status.textContent = msg || "";
-}
-
-function isValidJson(text) {
-    try {
-        JSON.parse(text);
-        return true;
-    } catch {
-        return false;
-    }
-}
 
 async function search() {
 
@@ -27,36 +14,27 @@ async function search() {
     if (!url) return;
 
     loading = true;
-    setStatus("분석 중...");
-
     result.innerHTML = "";
 
     try {
 
         const res = await fetch(`/api/rank?url=${encodeURIComponent(url)}`);
-
         const text = await res.text();
 
-        if (!isValidJson(text)) {
-            throw new Error("서버 응답이 JSON이 아님 (HTML 반환됨)");
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch {
+            throw new Error("서버 응답이 JSON이 아님");
         }
 
-        const data = JSON.parse(text);
+        if (data.error) throw new Error(data.error);
 
-        if (data.error) {
-            throw new Error(data.error);
-        }
-
+        latest = data;
         render(data);
-        setStatus("");
 
     } catch (e) {
-
-        console.error(e);
-        setStatus(e.message);
-
-        result.innerHTML =
-            `<div class="error">${e.message}</div>`;
+        result.innerHTML = `<div class="result-box">${e.message}</div>`;
     }
 
     loading = false;
@@ -66,11 +44,19 @@ function render(data) {
 
     let html = `
         <div class="result-box">
-            <div class="result-header">
-                <h2>${data.gallery}</h2>
+
+            <button class="copy-btn" onclick="copyData()">
+                <svg viewBox="0 0 24 24">
+                    <rect x="9" y="9" width="10" height="10" rx="2"/>
+                    <path d="M5 15V5h10"/>
+                </svg>
+            </button>
+
+            <div style="font-weight:700;font-size:18px;">
+                ${escape(data.gallery)}
             </div>
 
-            <table class="result-table">
+            <table>
                 <thead>
                     <tr>
                         <th>순위</th>
@@ -82,28 +68,47 @@ function render(data) {
                 <tbody>
     `;
 
-    for (const row of data.result) {
+    for (const r of data.result) {
         html += `
             <tr>
-                <td>${row.rank}</td>
-                <td>${escapeHtml(row.nickname)}</td>
-                <td>${row.count}</td>
-                <td>${row.share}%</td>
+                <td>${r.rank}</td>
+                <td>${escape(r.nickname)}</td>
+                <td>${r.count}</td>
+                <td>${r.share}%</td>
             </tr>
         `;
     }
 
-    html += `
-                </tbody>
-            </table>
-        </div>
-    `;
+    html += `</tbody></table></div>`;
 
     result.innerHTML = html;
 }
 
-function escapeHtml(str) {
-    return str.replace(/[&<>"']/g, m => ({
+async function copyData() {
+
+    if (!latest) return;
+
+    let text =
+        `${latest.gallery}\n` +
+        `순위\t닉네임\t글수\t지분\n`;
+
+    for (const r of latest.result) {
+        text += `${r.rank}\t${r.nickname}\t${r.count}\t${r.share}%\n`;
+    }
+
+    await navigator.clipboard.writeText(text);
+}
+
+pasteBtn.onclick = async () => {
+    try {
+        input.value = await navigator.clipboard.readText();
+    } catch {}
+};
+
+searchBtn.onclick = search;
+
+function escape(str) {
+    return (str || "").replace(/[&<>"']/g, m => ({
         "&":"&amp;",
         "<":"&lt;",
         ">":"&gt;",
@@ -111,15 +116,3 @@ function escapeHtml(str) {
         "'":"&#039;"
     }[m]));
 }
-
-searchBtn.onclick = search;
-
-input.addEventListener("keydown", e => {
-    if (e.key === "Enter") search();
-});
-
-pasteBtn.onclick = async () => {
-    try {
-        input.value = await navigator.clipboard.readText();
-    } catch {}
-};
