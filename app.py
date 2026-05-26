@@ -13,14 +13,15 @@ app = Flask(__name__)
 session = requests.Session()
 session.headers.update({
     "User-Agent": "Mozilla/5.0",
-    "Referer": "https://gall.dcinside.com/"
+    "Referer": "https://gall.dcinside.com/",
+    "Accept-Language": "ko-KR,ko;q=0.9"
 })
 
 
 # -----------------------
 # 시간 범위
 # -----------------------
-def time_range(days=7):
+def get_range(days=7):
     now = datetime.now()
     return now - timedelta(days=days), now
 
@@ -33,6 +34,7 @@ def normalize(url):
     path = parsed.path
 
     gid = parse_qs(parsed.query).get("id", [None])[0]
+
     if not gid:
         m = re.search(r"id=([^&/]+)", url)
         if m:
@@ -50,14 +52,13 @@ def normalize(url):
 
 
 # -----------------------
-# 갤 이름
+# 갤러리 이름
 # -----------------------
 def gallery_name(html):
     soup = BeautifulSoup(html, "html.parser")
     meta = soup.select_one("meta[name='description']")
     if not meta:
         return None
-
     return meta.get("content", "").split(" - ")[0].strip()
 
 
@@ -70,23 +71,49 @@ def parse_date(el):
         if t:
             return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
 
-        txt = el.text.strip()
+        txt = el.get_text(strip=True)
+
         if re.match(r"^\d{1,2}:\d{2}$", txt):
             h, m = map(int, txt.split(":"))
             now = datetime.now()
             return now.replace(hour=h, minute=m, second=0, microsecond=0)
+
     except:
         return None
 
+    return None
+
 
 # -----------------------
-# 제외
+# 제외 처리
 # -----------------------
-def skip(row):
+def is_skip(row):
     el = row.select_one(".gall_subject")
     if not el:
         return False
     return el.get_text(strip=True) in ["공지", "AD", "설문"]
+
+
+# -----------------------
+# writer fallback
+# -----------------------
+def get_writer(row):
+    return (
+        row.select_one(".nickname") or
+        row.select_one(".gall_writer") or
+        row.select_one(".ub-writer") or
+        row.select_one("td.gall_writer")
+    )
+
+
+# -----------------------
+# date fallback
+# -----------------------
+def get_date(row):
+    return (
+        row.select_one(".gall_date") or
+        row.select_one(".date_time")
+    )
 
 
 # -----------------------
@@ -95,15 +122,15 @@ def skip(row):
 def crawl(url):
     base = normalize(url)
 
-    start, end = time_range(7)
+    start, end = get_range(7)
 
     page = 1
-    max_page = 100
+    MAX_PAGE = 100
 
     users = defaultdict(int)
     gname = None
 
-    while page <= max_page:
+    while page <= MAX_PAGE:
 
         try:
             res = session.get(f"{base}&page={page}", timeout=7)
@@ -115,30 +142,32 @@ def crawl(url):
 
         html = res.text
 
+        # 1페이지 검증
         if page == 1:
             gname = gallery_name(html)
 
-            # 차단 체크
             if "ub-content" not in html:
                 return {
-                    "error": "blocked_or_invalid",
+                    "error": "blocked_or_invalid_html",
                     "sample": html[:300]
                 }
 
         soup = BeautifulSoup(html, "html.parser")
-        rows = soup.select("tr")
+
+        # 핵심: row fallback
+        rows = soup.select("tr.ub-content") or soup.select("tr")
 
         found = False
 
         for row in rows:
 
-            if skip(row):
+            if is_skip(row):
                 continue
 
-            date_el = row.select_one(".gall_date")
-            nick_el = row.select_one(".nickname")
+            date_el = get_date(row)
+            writer_el = get_writer(row)
 
-            if not date_el or not nick_el:
+            if not date_el or not writer_el:
                 continue
 
             dt = parse_date(date_el)
@@ -147,8 +176,8 @@ def crawl(url):
 
             if start <= dt <= end:
                 found = True
-                nick = nick_el.get_text(strip=True)
-                users[nick] += 1
+                name = writer_el.get_text(strip=True)
+                users[name] += 1
 
         if not found:
             break
@@ -197,7 +226,9 @@ def api_crawl():
         return jsonify({"error": str(e)}), 500
 
 
-# Render entry
+# -----------------------
+# RUN (Render)
+# -----------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
