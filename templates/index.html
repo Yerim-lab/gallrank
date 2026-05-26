@@ -1,92 +1,48 @@
 ﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
-
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <title>갤창랭킹</title>
 
-    <!-- Favicon -->
     <link rel="icon" href="/static/favicon.png" type="image/png">
-
-    <!-- CSS -->
     <link rel="stylesheet" href="/static/style.css?v=777">
-
-    <!-- Google Ads -->
-    <script async src="https://pagead2.googletagmanager.com/gtag/js?id=AW-18190141007"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-
-      gtag('config', 'AW-18190141007');
-    </script>
-
-    <!-- AdSense -->
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2538553648882016"
-     crossorigin="anonymous"></script>
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18190141007"></script>
-    <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-
-    gtag('config', 'AW-18190141007');
-    </script>
-    <!-- Event snippet for 페이지 조회 conversion page -->
-    <script>
-    gtag('event', 'conversion', {'send_to': 'AW-18190141007/ZBBmCMXo2LMcEM-M3uFD'});
-    </script>
-
-
-
 </head>
 
 <body>
 
-    <div class="container">
+<div class="container">
 
-        <h1>갤창랭킹</h1>
+    <h1>갤창랭킹</h1>
 
-        <div class="search-bar">
+    <div class="search-bar">
 
-            <input
-                type="text"
-                id="urlInput"
-                placeholder="갤러리 URL 입력"
-                autocomplete="off"
-            >
+        <input
+            id="urlInput"
+            type="text"
+            placeholder="디시 갤러리 URL 입력"
+            autocomplete="off"
+        />
 
-            <div class="divider"></div>
+        <div class="divider"></div>
 
-            <button id="pasteBtn" type="button" aria-label="붙여넣기">
-                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
-                    fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-2" />
-                    <rect x="4" y="2" width="12" height="16" rx="2" />
-                </svg>
-            </button>
+        <button id="pasteBtn" type="button">
+            📋
+        </button>
 
-            <div class="divider"></div>
+        <div class="divider"></div>
 
-            <button id="searchBtn" type="button" aria-label="검색">
-                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
-                    fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="7" />
-                    <line x1="16.65" y1="16.65" x2="21" y2="21" />
-                </svg>
-            </button>
-
-        </div>
-
-        <div id="result"></div>
+        <button id="searchBtn" type="button">
+            🔍
+        </button>
 
     </div>
 
-    <!-- JS -->
-    <script src="/static/app.js?v=777"></script>
+    <div id="result"></div>
+
+</div>
+
+<script src="/static/app.js?v=888"></script>
 
 </body>
 </html>
