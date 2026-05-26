@@ -1,196 +1,76 @@
-const btn = document.getElementById("searchBtn");
-
-const pasteBtn = document.getElementById("pasteBtn");
-
 const input = document.getElementById("urlInput");
+const button = document.getElementById("searchBtn");
+const result = document.getElementById("result");
 
-const resultBox = document.getElementById("result");
 
-
-btn.addEventListener("click", async () => {
-
+button.addEventListener("click", async () => {
     const url = input.value.trim();
 
-    if (!url || btn.classList.contains("loading")) {
+    if (!url) {
+        result.innerHTML = "URL을 입력하세요.";
         return;
     }
 
-    setLoading(true);
+    result.innerHTML = "집계 중...";
 
     try {
-
-        const response = await fetch("/search", {
-
-            method: "POST",
-
-            headers: {
-                "Content-Type": "application/json"
-            },
-
-            body: JSON.stringify({
-                url
-            })
-
-        });
-
-        if (!response.ok) {
-            throw new Error("서버 오류");
-        }
-
-        const data = await response.json();
-
-        renderResult(data);
-
-    } catch (err) {
-
-        console.error(err);
-
-        resultBox.innerHTML = `
-            <div class="result-card error">
-                에러 발생
-            </div>
-        `;
-
-    } finally {
-
-        setLoading(false);
-
-    }
-
-});
-
-
-pasteBtn.addEventListener("click", async () => {
-
-    try {
-
-        const text = await navigator.clipboard.readText();
-
-        input.value = text;
-
-    } catch (err) {
-
-        console.error(err);
-
-        alert("붙여넣기 실패");
-
-    }
-
-});
-
-
-function setLoading(isLoading) {
-
-    if (isLoading) {
-        btn.classList.add("loading");
-    } else {
-        btn.classList.remove("loading");
-    }
-
-}
-
-
-function renderResult(data) {
-
-    const list = Array.isArray(data.result)
-        ? data.result
-        : [];
-
-    resultBox.innerHTML = `
-        <div class="result-card">
-
-            <div class="result-header">
-
-                <div class="header-left">
-
-                    <div class="gallery-name">
-                        ${data.gallery || "-"}
-                    </div>
-
-                    <div class="date-range">
-                        ${data.range || "-"}
-                    </div>
-
-                </div>
-
-                <button
-                    class="copy-btn"
-                    onclick="copyResult()"
-                    type="button"
-                >
-                    복사
-                </button>
-
-            </div>
-
-            <div class="table-box">
-
-                <div class="table-row table-head">
-                    <span>순위</span>
-                    <span>닉네임</span>
-                    <span>글수</span>
-                    <span>지분</span>
-                </div>
-
-                ${list.map(item => `
-                    <div class="table-row">
-                        <span>${item.rank ?? "-"}</span>
-                        <span>${item.nick ?? "-"}</span>
-                        <span>${item.posts ?? "-"}</span>
-                        <span>${item.share ?? "-"}</span>
-                    </div>
-                `).join("")}
-
-            </div>
-
-        </div>
-    `;
-}
-
-
-async function copyResult() {
-
-    try {
-
-        const gallery =
-            document.querySelector(".gallery-name")
-            ?.innerText
-            ?.trim() || "";
-
-        const range =
-            document.querySelector(".date-range")
-            ?.innerText
-            ?.trim() || "";
-
-        const rows = document.querySelectorAll(
-            ".table-row"
+        const res = await fetch(
+            `/api/rank?url=${encodeURIComponent(url)}`
         );
 
-        let text = "";
+        const data = await res.json();
 
-        text += `${gallery}\n`;
-        text += `${range}\n`;
+        console.log(data);
 
-        rows.forEach(row => {
+        // 실제 에러 출력
+        if (data.error) {
+            result.innerHTML = `
+                <div class="error">
+                    ${data.error}
+                </div>
+            `;
+            return;
+        }
 
-            const cols = row.querySelectorAll("span");
+        let html = `
+            <h2>${data.gallery}</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>순위</th>
+                        <th>닉네임</th>
+                        <th>글수</th>
+                        <th>지분</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
 
-            const line = Array.from(cols)
-                .map(col => col.innerText.trim())
-                .join("\t");
-
-            text += `${line}\n`;
-
+        data.result.forEach(row => {
+            html += `
+                <tr>
+                    <td>${row.rank}</td>
+                    <td>${row.nickname}</td>
+                    <td>${row.count}</td>
+                    <td>${row.share}%</td>
+                </tr>
+            `;
         });
 
-        await navigator.clipboard.writeText(text);
+        html += `
+                </tbody>
+            </table>
+        `;
 
-    } catch (err) {
+        result.innerHTML = html;
 
-        console.error(err);
+    } catch (e) {
+        console.error(e);
 
-        alert("복사 실패");
-
+        result.innerHTML = `
+            <div class="error">
+                ${e.message}
+            </div>
+        `;
     }
-
-}
+});
