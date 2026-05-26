@@ -12,47 +12,21 @@ HEADERS = {
         "AppleWebKit/537.36 "
         "(KHTML, like Gecko) "
         "Chrome/136.0 Safari/537.36"
-    ),
-    "Referer": "https://gall.dcinside.com/"
+    )
 }
 
 
-def parse_url(url):
-    url = url.strip()
-
-    # 마이너 갤러리
-    if "mgallery" in url:
-        match = re.search(r"id=([a-zA-Z0-9_]+)", url)
-
-        if match:
-            return {
-                "type": "mgallery",
-                "id": match.group(1)
-            }
-
-    # 미니 갤러리
-    if "mini" in url:
-        match = re.search(r"id=([a-zA-Z0-9_]+)", url)
-
-        if match:
-            return {
-                "type": "mini",
-                "id": match.group(1)
-            }
-
-    # 일반 갤러리 lists
-    if "board/lists" in url:
-        match = re.search(r"id=([a-zA-Z0-9_]+)", url)
-
-        if match:
-            return {
-                "type": "board",
-                "id": match.group(1)
-            }
-
-    # 숏 URL
+def get_gallery_id(url):
     match = re.search(
-        r"dcinside\.com/([a-zA-Z0-9_]+)",
+        r"id=([a-zA-Z0-9_]+)",
+        url
+    )
+
+    if match:
+        return match.group(1)
+
+    match = re.search(
+        r"dcinside\\.com/([a-zA-Z0-9_]+)",
         url
     )
 
@@ -66,58 +40,30 @@ def parse_url(url):
         ]
 
         if gid not in blocked:
-            return {
-                "type": "auto",
-                "id": gid
-            }
+            return gid
 
     return None
 
 
-def build_urls(gallery_id):
+def get_urls(gid):
     return [
-        (
-            "https://gall.dcinside.com/"
-            f"board/lists/?id={gallery_id}"
-        ),
-
-        (
-            "https://gall.dcinside.com/"
-            f"mgallery/board/lists/?id={gallery_id}"
-        ),
-
-        (
-            "https://gall.dcinside.com/"
-            f"mini/board/lists/?id={gallery_id}"
-        )
+        f"https://gall.dcinside.com/board/lists/?id={gid}",
+        f"https://gall.dcinside.com/mgallery/board/lists/?id={gid}",
+        f"https://gall.dcinside.com/mini/board/lists/?id={gid}"
     ]
 
 
-def request_gallery(url, page):
-    full_url = f"{url}&page={page}"
-
-    response = requests.get(
-        full_url,
-        headers=HEADERS,
-        timeout=15
-    )
-
-    print("REQUEST:", full_url)
-    print("STATUS:", response.status_code)
-
-    if response.status_code != 200:
-        return None
-
-    return response
-
-
-def find_working_gallery(gallery_id):
-    urls = build_urls(gallery_id)
+def find_url(gid):
+    urls = get_urls(gid)
 
     for url in urls:
-        response = request_gallery(url, 1)
+        response = requests.get(
+            url,
+            headers=HEADERS,
+            timeout=10
+        )
 
-        if not response:
+        if response.status_code != 200:
             continue
 
         soup = BeautifulSoup(
@@ -125,47 +71,43 @@ def find_working_gallery(gallery_id):
             "lxml"
         )
 
-        rows = soup.select("tr.ub-content")
+        rows = soup.select(
+            "tr.ub-content"
+        )
 
         if rows:
-            print("WORKING URL:", url)
             return url
 
     return None
 
 
 def crawl_gallery(user_url):
-    parsed = parse_url(user_url)
+    gid = get_gallery_id(user_url)
 
-    if not parsed:
-        raise Exception(
-            "URL 파싱 실패"
-        )
+    if not gid:
+        raise Exception("갤러리 ID 추출 실패")
 
-    gallery_id = parsed["id"]
+    base_url = find_url(gid)
 
-    working_url = find_working_gallery(
-        gallery_id
-    )
-
-    if not working_url:
-        raise Exception(
-            "갤러리를 찾을 수 없음"
-        )
+    if not base_url:
+        raise Exception("갤러리를 찾을 수 없음")
 
     counter = Counter()
 
-    gallery_name = ""
+    gallery_name = gid
 
     page = 1
 
     while True:
-        response = request_gallery(
-            working_url,
-            page
+        url = f"{base_url}&page={page}"
+
+        response = requests.get(
+            url,
+            headers=HEADERS,
+            timeout=10
         )
 
-        if not response:
+        if response.status_code != 200:
             break
 
         soup = BeautifulSoup(
@@ -173,7 +115,7 @@ def crawl_gallery(user_url):
             "lxml"
         )
 
-        if not gallery_name:
+        if page == 1:
             title = soup.select_one(
                 ".title_subject"
             )
@@ -182,8 +124,6 @@ def crawl_gallery(user_url):
                 gallery_name = (
                     title.text.strip()
                 )
-            else:
-                gallery_name = gallery_id
 
         rows = soup.select(
             "tr.ub-content"
@@ -192,7 +132,7 @@ def crawl_gallery(user_url):
         if not rows:
             break
 
-        post_found = False
+        valid = 0
 
         for row in rows:
             if "notice" in row.get(
@@ -216,19 +156,16 @@ def crawl_gallery(user_url):
 
             nickname = nickname.strip()
 
-            if not nickname:
-                nickname = "ㅇㅇ"
-
             counter[nickname] += 1
 
-            post_found = True
+            valid += 1
 
-        if not post_found:
+        if valid == 0:
             break
 
         page += 1
 
-        if page > 20:
+        if page > 15:
             break
 
     total = sum(counter.values())
@@ -237,9 +174,7 @@ def crawl_gallery(user_url):
 
     rank = 1
 
-    for nickname, count in (
-        counter.most_common()
-    ):
+    for nickname, count in counter.most_common():
         share = round(
             (count / total) * 100,
             2
@@ -256,6 +191,5 @@ def crawl_gallery(user_url):
 
     return {
         "gallery": gallery_name,
-        "total": total,
         "result": result
     }

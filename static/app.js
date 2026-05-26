@@ -12,25 +12,6 @@ const result =
 
 let latestData = null;
 
-let loading = false;
-
-
-function setLoading(state) {
-    loading = state;
-
-    if (state) {
-        searchBtn.innerHTML = `
-            <div class="loading-dots">
-                <span></span>
-                <span></span>
-                <span></span>
-            </div>
-        `;
-    } else {
-        searchBtn.innerHTML = "🔍";
-    }
-}
-
 
 function getDate(offset = 0) {
     const d = new Date();
@@ -51,38 +32,7 @@ function getDate(offset = 0) {
 }
 
 
-function createCopyText(data) {
-    let text = "";
-
-    text += `${data.gallery}\n`;
-
-    text += `${getDate(-7)}\t${getDate()}\n`;
-
-    text += `순위\t닉네임\t글수\t지분\n`;
-
-    data.result.forEach(row => {
-        text += (
-            `${row.rank}\t` +
-            `${row.nickname}\t` +
-            `${row.count}\t` +
-            `${row.share}%\n`
-        );
-    });
-
-    return text;
-}
-
-
-async function copyResult() {
-    if (!latestData) return;
-
-    await navigator.clipboard.writeText(
-        createCopyText(latestData)
-    );
-}
-
-
-function renderResult(data) {
+function render(data) {
     return `
         <div class="result-box">
 
@@ -138,14 +88,10 @@ function renderResult(data) {
 }
 
 
-async function searchGallery() {
-    if (loading) return;
-
+async function search() {
     const url = input.value.trim();
 
     if (!url) return;
-
-    setLoading(true);
 
     try {
         const response = await fetch(
@@ -160,8 +106,7 @@ async function searchGallery() {
 
         latestData = data;
 
-        result.innerHTML =
-            renderResult(data);
+        result.innerHTML = render(data);
 
     } catch (e) {
         result.innerHTML = `
@@ -170,21 +115,45 @@ async function searchGallery() {
             </div>
         `;
     }
+}
 
-    setLoading(false);
+
+async function copyResult() {
+    if (!latestData) return;
+
+    let text = "";
+
+    text += `${latestData.gallery}\n`;
+
+    text += `${getDate(-7)}\t${getDate()}\n`;
+
+    text += `순위\t닉네임\t글수\t지분\n`;
+
+    latestData.result.forEach(row => {
+        text += (
+            `${row.rank}\t` +
+            `${row.nickname}\t` +
+            `${row.count}\t` +
+            `${row.share}%\n`
+        );
+    });
+
+    await navigator.clipboard.writeText(
+        text
+    );
 }
 
 
 searchBtn.addEventListener(
     "click",
-    searchGallery
+    search
 );
 
 input.addEventListener(
     "keydown",
     e => {
         if (e.key === "Enter") {
-            searchGallery();
+            search();
         }
     }
 );
@@ -200,5 +169,3 @@ pasteBtn.addEventListener(
 );
 
 window.copyResult = copyResult;
-
-setLoading(false);
