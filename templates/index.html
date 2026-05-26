@@ -2,18 +2,22 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>갤러리 랭킹</title>
-    <link rel="stylesheet" href="style.css">
+    <title>갤창 랭킹</title>
+
+    <link rel="icon" href="/favicon.png">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+
 <body>
 
 <div class="container">
 
-    <h1>갤러리 글 랭킹</h1>
+    <h1>갤러리 랭킹</h1>
 
     <div class="input-box">
         <input id="urlInput" placeholder="갤러리 URL 입력">
-        <button onclick="runCrawl()">크롤링</button>
+        <button onclick="runCrawl()">조회</button>
     </div>
 
     <table>
@@ -31,6 +35,7 @@
 
 </div>
 
-<script src="app.js"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+
 </body>
 </html>
