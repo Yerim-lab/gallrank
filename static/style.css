@@ -1,122 +1,133 @@
-* {
+body {
     margin: 0;
-    padding: 0;
+    background: #ffffff;
+    color: #000000;
+    font-family: Arial, sans-serif;
+}
+
+.wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 90px;
+}
+
+.title {
+    font-size: 32px;
+    font-weight: 700;
+    margin-bottom: 18px;
+}
+
+/* 전체 중앙 정렬 */
+.search-wrap {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}
+
+/* 검색바 */
+.search-bar {
+    display: flex;
+    align-items: center;
+
+    width: 560px;
+    height: 64px;
+
+    background: #000000;
+    border-radius: 999px;
+
+    padding: 0 14px;
     box-sizing: border-box;
 }
 
-body {
-    font-family: Arial, sans-serif;
-    background: #fff;
-    color: #111;
-}
-
-.container {
-    max-width: 980px;
-    margin: 60px auto;
-    padding: 16px;
-}
-
-.header {
-    text-align: center;
-    margin-bottom: 30px;
-}
-
-h1 {
-    font-size: 38px;
-}
-
-.sub {
-    color: #666;
-    margin-top: 8px;
-    font-size: 14px;
-}
-
-.search-box {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-}
-
-.search-box input {
+/* input */
+.search-bar input {
     flex: 1;
-    padding: 14px;
-    border: 1px solid #ddd;
-    border-radius: 10px;
-    font-size: 14px;
-}
+    min-width: 0;
 
-.search-box button {
-    padding: 0 16px;
     border: none;
-    border-radius: 10px;
-    background: #111;
-    color: #fff;
-    cursor: pointer;
+    outline: none;
+    background: transparent;
+
+    color: #ffffff;
+    font-size: 15px;
+
+    text-align: left;
 }
 
-.status {
-    margin: 10px 0;
-    font-size: 13px;
-    color: #666;
+/* 구분선 */
+.divider {
+    width: 1px;
+    height: 26px;
+    background: #444;
+    margin: 0 10px;
+}
+
+/* 버튼 공통 */
+.icon-btn {
+    width: 44px;
+    height: 44px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: transparent;
+    border: none;
+    cursor: pointer;
+
+    flex-shrink: 0;
+}
+
+.icon-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* 결과 */
+#result {
+    width: 900px;
+    margin-top: 40px;
 }
 
 .result-box {
-    border: 1px solid #eee;
-    border-radius: 14px;
-    overflow: hidden;
-}
-
-.result-header {
+    background: #f2f2f2;
+    border-radius: 16px;
     padding: 16px;
-    border-bottom: 1px solid #eee;
+    position: relative;
 }
 
-.result-header h2 {
-    font-size: 18px;
+.copy-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+
+    width: 40px;
+    height: 40px;
+
+    border: none;
+    background: #000;
+    border-radius: 10px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
 }
 
-.result-table {
+/* table */
+table {
     width: 100%;
     border-collapse: collapse;
+    margin-top: 18px;
 }
 
-.result-table th,
-.result-table td {
-    padding: 12px;
-    border-bottom: 1px solid #eee;
+th, td {
+    padding: 10px;
     text-align: center;
-    font-size: 13px;
+    border-bottom: 1px solid #ddd;
 }
 
-.result-table th {
-    background: #f7f7f7;
-}
-
-/* 모바일 최적화 */
-@media (max-width: 768px) {
-
-    .container {
-        margin: 20px auto;
-        padding: 10px;
-    }
-
-    h1 {
-        font-size: 26px;
-    }
-
-    .search-box {
-        flex-direction: column;
-    }
-
-    .search-box button {
-        height: 44px;
-    }
-
-    .result-table {
-        min-width: 520px;
-    }
-
-    .result-box {
-        overflow-x: auto;
-    }
+th {
+    background: #e6e6e6;
 }

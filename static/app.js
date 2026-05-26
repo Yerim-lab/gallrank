@@ -1,43 +1,29 @@
 const input = document.getElementById("urlInput");
-const pasteBtn = document.getElementById("pasteBtn");
 const searchBtn = document.getElementById("searchBtn");
+const pasteBtn = document.getElementById("pasteBtn");
 const result = document.getElementById("result");
 
 let latest = null;
-let loading = false;
+
+function escapeHtml(str) {
+    return document.createElement("div").appendChild(
+        document.createTextNode(str)
+    ).parentNode.innerHTML;
+}
 
 async function search() {
-
-    if (loading) return;
 
     const url = input.value.trim();
     if (!url) return;
 
-    loading = true;
-    result.innerHTML = "";
+    result.innerHTML = "로딩중...";
 
-    try {
+    const res = await fetch(`/api/rank?url=${encodeURIComponent(url)}`);
+    const data = await res.json();
 
-        const res = await fetch(`/api/rank?url=${encodeURIComponent(url)}`);
-        const text = await res.text();
+    latest = data;
 
-        let data;
-        try {
-            data = JSON.parse(text);
-        } catch {
-            throw new Error("서버 응답이 JSON이 아님");
-        }
-
-        if (data.error) throw new Error(data.error);
-
-        latest = data;
-        render(data);
-
-    } catch (e) {
-        result.innerHTML = `<div class="result-box">${e.message}</div>`;
-    }
-
-    loading = false;
+    render(data);
 }
 
 function render(data) {
@@ -45,34 +31,31 @@ function render(data) {
     let html = `
         <div class="result-box">
 
-            <button class="copy-btn" onclick="copyData()">
-                <svg viewBox="0 0 24 24">
-                    <rect x="9" y="9" width="10" height="10" rx="2"/>
-                    <path d="M5 15V5h10"/>
-                </svg>
-            </button>
+        <button class="copy-btn" onclick="copyData()">
+            <svg viewBox="0 0 24 24" width="18" height="18">
+                <rect x="9" y="9" width="13" height="13" fill="none" stroke="white" stroke-width="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                      fill="none" stroke="white" stroke-width="2"/>
+            </svg>
+        </button>
 
-            <div style="font-weight:700;font-size:18px;">
-                ${escape(data.gallery)}
-            </div>
-
-            <table>
-                <thead>
-                    <tr>
-                        <th>순위</th>
-                        <th>닉네임</th>
-                        <th>글수</th>
-                        <th>지분</th>
-                    </tr>
-                </thead>
-                <tbody>
+        <table>
+            <thead>
+                <tr>
+                    <th>순위</th>
+                    <th>닉네임</th>
+                    <th>글수</th>
+                    <th>지분</th>
+                </tr>
+            </thead>
+            <tbody>
     `;
 
     for (const r of data.result) {
         html += `
             <tr>
                 <td>${r.rank}</td>
-                <td>${escape(r.nickname)}</td>
+                <td>${escapeHtml(r.nickname)}</td>
                 <td>${r.count}</td>
                 <td>${r.share}%</td>
             </tr>
@@ -88,9 +71,10 @@ async function copyData() {
 
     if (!latest) return;
 
-    let text =
-        `${latest.gallery}\n` +
-        `순위\t닉네임\t글수\t지분\n`;
+    let text = "";
+
+    text += `${latest.gallery}\n`;
+    text += `순위\t닉네임\t글수\t지분\n`;
 
     for (const r of latest.result) {
         text += `${r.rank}\t${r.nickname}\t${r.count}\t${r.share}%\n`;
@@ -99,20 +83,12 @@ async function copyData() {
     await navigator.clipboard.writeText(text);
 }
 
-pasteBtn.onclick = async () => {
-    try {
-        input.value = await navigator.clipboard.readText();
-    } catch {}
-};
-
 searchBtn.onclick = search;
 
-function escape(str) {
-    return (str || "").replace(/[&<>"']/g, m => ({
-        "&":"&amp;",
-        "<":"&lt;",
-        ">":"&gt;",
-        "\"":"&quot;",
-        "'":"&#039;"
-    }[m]));
-}
+pasteBtn.onclick = async () => {
+    input.value = await navigator.clipboard.readText();
+};
+
+input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") search();
+});
