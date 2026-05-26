@@ -20,48 +20,55 @@ BASE = {
 
 
 # ---------------------------
-# URL → gid + hint 추출
+# URL → gid + hint
 # ---------------------------
 def extract_gallery_info(url: str):
     url = url.strip()
     if not url.startswith("http"):
         url = "https://" + url
 
+    # mini
     if "/mini/" in url:
-        m = re.search(r"id=([a-zA-Z0-9_]+)|/mini/([a-zA-Z0-9_]+)", url)
-        gid = m.group(1) or m.group(2) if m else None
-        return gid, "mini"
+        m = re.search(r"id=([a-zA-Z0-9_]+)", url)
+        if m:
+            return m.group(1), "mini"
 
+    # mgallery
     if "/mgallery/" in url:
         m = re.search(r"id=([a-zA-Z0-9_]+)", url)
-        return (m.group(1), "mgallery") if m else (None, None)
+        if m:
+            return m.group(1), "mgallery"
 
+    # board
     if "/board/" in url:
         m = re.search(r"id=([a-zA-Z0-9_]+)", url)
-        return (m.group(1), "board") if m else (None, None)
+        if m:
+            return m.group(1), "board"
 
-    m = re.search(
-        r"m\.dcinside\.com/([a-zA-Z0-9_]+)$|gall\.dcinside\.com/([a-zA-Z0-9_]+)$",
-        url
-    )
+    # fallback
+    m = re.search(r"id=([a-zA-Z0-9_]+)", url)
     if m:
-        gid = m.group(1) or m.group(2)
-        return gid, None
+        return m.group(1), None
 
     return None, None
 
 
 # ---------------------------
-# 갤러리 타입 판별
+# 갤러리 타입 판별 (강화 버전)
 # ---------------------------
 def detect_gallery_type(gid: str, hint=None):
-    if hint == "mini":
-        return "mini", BASE["mini"].format(gid=gid)
+    candidates = []
 
-    if hint in ["mgallery", "board"]:
-        return hint, BASE[hint].format(gid=gid)
+    # hint 우선
+    if hint in BASE:
+        candidates.append(hint)
 
-    for t in ["mgallery", "board"]:
+    # 전체 fallback 순서
+    for t in ["mini", "mgallery", "board"]:
+        if t not in candidates:
+            candidates.append(t)
+
+    for t in candidates:
         url = BASE[t].format(gid=gid)
 
         try:
@@ -73,7 +80,15 @@ def detect_gallery_type(gid: str, hint=None):
             continue
 
         soup = BeautifulSoup(r.text, "lxml")
-        if soup.select("tr.ub-content"):
+
+        # DCInside list 핵심 구조
+        rows = soup.select("tr.ub-content")
+
+        # mini는 종종 구조 다름 → fallback
+        if not rows:
+            rows = soup.select("tr")
+
+        if rows:
             return t, url
 
     return None, None
@@ -98,7 +113,8 @@ def get_gallery_name(soup):
 # 필터
 # ---------------------------
 def is_filtered_row(row):
-    if "notice" in (row.get("class") or []):
+    classes = row.get("class") or []
+    if "notice" in classes:
         return True
 
     num = row.select_one(".gall_num")
@@ -148,7 +164,7 @@ def parse_post_date(row):
 
 
 # ---------------------------
-# 크롤링 (수정 핵심)
+# 크롤링
 # ---------------------------
 def crawl_base(base_url, cutoff, counter):
     page = 1
@@ -168,6 +184,9 @@ def crawl_base(base_url, cutoff, counter):
         rows = soup.select("tr.ub-content")
 
         if not rows:
+            rows = soup.select("tr")
+
+        if not rows:
             break
 
         page_has_in_range = False
@@ -177,8 +196,6 @@ def crawl_base(base_url, cutoff, counter):
                 continue
 
             dt = parse_post_date(row)
-
-            # 날짜 없는 글은 끌올/비정상 케이스 → 집계만 제외, 종료에는 영향 없음
             in_range = True if dt is None else (dt >= cutoff)
 
             if in_range:
@@ -196,7 +213,6 @@ def crawl_base(base_url, cutoff, counter):
 
                 counter[nick] += 1
 
-        # 페이지 전체가 범위 밖이면 종료
         if not page_has_in_range:
             break
 
