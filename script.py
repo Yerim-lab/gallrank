@@ -32,7 +32,7 @@ def normalize_url(url: str):
 
 
 # ---------------------------
-# resolve + type/id
+# resolve + gallery type
 # ---------------------------
 def resolve_dcinside(url: str):
     url = normalize_url(url)
@@ -57,7 +57,7 @@ def resolve_dcinside(url: str):
     else:
         gtype = "board"
 
-    # krstock 보정 (mgallery 고정)
+    # 축약 갤러리 보정 (DC 구조 특성)
     if "krstock" in final_url:
         gtype = "mgallery"
 
@@ -130,6 +130,25 @@ def parse_post_date(row):
 
 
 # ---------------------------
+# 핵심: 유저 식별 로직 (FIX POINT)
+# ---------------------------
+def extract_user_key(writer):
+    if not writer:
+        return "ㅇㅇ"
+
+    nick = writer.get("data-nick") or writer.get_text(strip=True) or "ㅇㅇ"
+    uid = writer.get("data-user_id") or writer.get("data-uid") or ""
+
+    nick = nick.strip()
+
+    # uid가 있으면 절대 이걸 기준으로 묶어야 함
+    if uid:
+        return f"{nick}({uid})"
+
+    return nick
+
+
+# ---------------------------
 # 크롤링
 # ---------------------------
 def crawl_base(base_url, cutoff, counter):
@@ -159,21 +178,13 @@ def crawl_base(base_url, cutoff, counter):
             if not post_date:
                 continue
 
-            # cutoff 기준 적용
             if post_date < cutoff:
                 continue
 
             writer = row.select_one(".gall_writer") or row.select_one(".ub-writer")
 
-            if writer:
-                nickname = (
-                    writer.get("data-nick")
-                    or writer.get_text(strip=True)
-                ).strip()
-            else:
-                nickname = "ㅇㅇ"
-
-            counter[nickname] += 1
+            key = extract_user_key(writer)
+            counter[key] += 1
 
         page += 1
 
@@ -189,15 +200,14 @@ def crawl_gallery(url: str):
 
     base_url = build_base_url(gtype, gid)
 
-    counter = Counter()
-
-    # ---------------------------
-    # 핵심 변경 부분
-    # ---------------------------
     now = datetime.now()
+
+    # 7일 전 00시 기준
     cutoff = (now - timedelta(days=7)).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
+
+    counter = Counter()
 
     crawl_base(base_url, cutoff, counter)
 
@@ -206,10 +216,10 @@ def crawl_gallery(url: str):
     result = []
     rank = 1
 
-    for nickname, count in counter.most_common():
+    for user, count in counter.most_common():
         result.append({
             "rank": rank,
-            "nickname": nickname,
+            "user": user,
             "count": count,
             "share": round(count / total * 100, 2) if total else 0
         })
