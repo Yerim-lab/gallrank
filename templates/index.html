@@ -11,17 +11,9 @@
 
     <title>갤창랭킹</title>
 
-    <!-- 테스트용 inline CSS -->
-    <style>
-        body {
-            background: #ffffff;
-        }
-    </style>
-
-    <!-- 실제 CSS -->
     <link
         rel="stylesheet"
-        href="/static/style.css?v=99999"
+        href="/static/style.css?v=777"
     >
 
 </head>
@@ -38,18 +30,80 @@
                 type="text"
                 id="urlInput"
                 placeholder="URL 입력"
+                autocomplete="off"
             >
 
             <div class="divider"></div>
 
-            <button id="pasteBtn">
-                ⧉
+            <!-- 붙여넣기 버튼 -->
+            <button
+                id="pasteBtn"
+                type="button"
+            >
+
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="white"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+
+                    <path
+                        d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-2"
+                    />
+
+                    <rect
+                        x="4"
+                        y="2"
+                        width="12"
+                        height="16"
+                        rx="2"
+                    />
+
+                </svg>
+
             </button>
 
             <div class="divider"></div>
 
-            <button id="searchBtn">
-                🔍
+            <!-- 검색 버튼 -->
+            <button
+                id="searchBtn"
+                type="button"
+            >
+
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="white"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+
+                    <circle
+                        cx="11"
+                        cy="11"
+                        r="7"
+                    />
+
+                    <line
+                        x1="16.65"
+                        y1="16.65"
+                        x2="21"
+                        y2="21"
+                    />
+
+                </svg>
+
             </button>
 
         </div>
@@ -58,9 +112,7 @@
 
     </div>
 
-    <script
-        src="/static/app.js?v=99999"
-    ></script>
+    <script src="/static/app.js?v=777"></script>
 
 </body>
 </html>
