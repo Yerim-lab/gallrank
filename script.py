@@ -1,162 +1,205 @@
+import re
 import requests
-import time
 
 from bs4 import BeautifulSoup
-from collections import defaultdict
+from collections import Counter
 from datetime import datetime, timedelta
 
 
 HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 "
-        "(Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 "
-        "(KHTML, like Gecko) "
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/136.0 Safari/537.36"
-    ),
-    "Referer": "https://gall.dcinside.com/"
+    )
 }
 
 
-def fetch(url):
+def normalize_dc_url(url):
+    url = url.strip()
 
-    try:
+    # 이미 게시판 주소인 경우
+    if "lists?id=" in url:
+        return url
 
-        response = requests.get(
-            url,
-            headers=HEADERS,
-            timeout=10
+    # 미니 갤러리
+    m = re.search(r"dcinside\.com/mini/([^/?#]+)", url)
+
+    if m:
+        gid = m.group(1)
+
+        return (
+            f"https://gall.dcinside.com/"
+            f"mini/board/lists?id={gid}"
         )
 
-        if response.status_code == 200:
-            return response.text
+    # 마이너 갤러리
+    m = re.search(r"dcinside\.com/mgallery/([^/?#]+)", url)
 
-        return None
+    if m:
+        gid = m.group(1)
 
-    except:
-        return None
+        return (
+            f"https://gall.dcinside.com/"
+            f"mgallery/board/lists?id={gid}"
+        )
 
+    # 일반 갤러리
+    m = re.search(r"dcinside\.com/([^/?#]+)", url)
 
-def parse_datetime(text):
+    if m:
+        gid = m.group(1)
 
-    text = text.strip()
-
-    formats = [
-        "%Y-%m-%d %H:%M:%S",
-        "%Y.%m.%d %H:%M:%S"
-    ]
-
-    for fmt in formats:
-
-        try:
-            return datetime.strptime(text, fmt)
-        except:
-            pass
+        return (
+            f"https://gall.dcinside.com/"
+            f"board/lists/?id={gid}"
+        )
 
     return None
 
 
-def get_cutoff_datetime():
+def extract_gallery_name(soup):
+    title = soup.select_one(".title_subject")
 
+    if title:
+        return title.text.strip()
+
+    page_title = soup.title.text.strip()
+
+    return page_title.replace(" - DC Inside", "").strip()
+
+
+def parse_date(date_text):
     now = datetime.now()
 
-    seven_days_ago = now - timedelta(days=7)
+    try:
+        # 05.26 형태
+        if "." in date_text and ":" not in date_text:
+            month, day = map(int, date_text.split("."))
 
-    cutoff = datetime(
-        year=seven_days_ago.year,
-        month=seven_days_ago.month,
-        day=seven_days_ago.day,
-        hour=0,
-        minute=0,
-        second=0
-    )
+            return datetime(now.year, month, day)
 
-    return cutoff
+        # 2026-05-26 형태
+        if "-" in date_text:
+            return datetime.strptime(
+                date_text,
+                "%Y-%m-%d"
+            )
+
+    except:
+        return None
+
+    return None
 
 
-def crawl(base_url):
+def crawl_gallery(url, days=7):
+    limit_date = datetime.now() - timedelta(days=days)
 
-    cutoff = get_cutoff_datetime()
+    nick_counter = Counter()
 
-    counter = defaultdict(int)
+    gallery_name = ""
+    total_posts = 0
 
     page = 1
 
     while True:
+        page_url = f"{url}&page={page}"
 
-        separator = "&" if "?" in base_url else "?"
+        print(f"[CRAWL] {page_url}")
 
-        url = f"{base_url}{separator}page={page}"
+        res = requests.get(
+            page_url,
+            headers=HEADERS,
+            timeout=10
+        )
 
-        html = fetch(url)
-
-        if not html:
+        if res.status_code != 200:
+            print("STATUS ERROR:", res.status_code)
             break
 
         soup = BeautifulSoup(
-            html,
+            res.text,
             "html.parser"
         )
+
+        if not gallery_name:
+            gallery_name = extract_gallery_name(soup)
 
         rows = soup.select("tr.ub-content")
 
         if not rows:
             break
 
-        found_recent_post = False
+        stop = False
 
         for row in rows:
+            date_el = row.select_one(".gall_date")
 
-            writer = row.select_one(".gall_writer")
-            date = row.select_one(".gall_date")
-
-            if not writer or not date:
-                continue
-
-            nick = (
-                writer.get("data-nick")
-                or writer.text.strip()
-            )
-
-            nick = nick.strip()
-
-            if not nick:
-                continue
-
-            # 관리자 제외
-            if nick in ["운영자", "관리자"]:
+            if not date_el:
                 continue
 
             date_text = (
-                date.get("title")
-                or date.text.strip()
+                date_el.get("title")
+                or date_el.text.strip()
             )
 
-            post_time = parse_datetime(date_text)
+            date_text = date_text[:10]
 
-            if not post_time:
+            post_date = parse_date(date_text)
+
+            if not post_date:
                 continue
 
-            # 최근 7일 범위 집계
-            if post_time >= cutoff:
+            # 기간 초과
+            if post_date < limit_date:
+                stop = True
+                break
 
-                counter[nick] += 1
+            writer = row.select_one(".gall_writer")
 
-                found_recent_post = True
+            if not writer:
+                continue
 
-        # 현재 페이지에 최근 글이 하나도 없으면 종료
-        if not found_recent_post:
+            nickname = (
+                writer.get("data-nick")
+                or writer.text.strip()
+                or "ㅇㅇ"
+            )
+
+            nickname = nickname.strip()
+
+            if not nickname:
+                nickname = "ㅇㅇ"
+
+            nick_counter[nickname] += 1
+            total_posts += 1
+
+        if stop:
             break
 
         page += 1
 
-        # 서버 과부하 방지
-        time.sleep(0.2)
+    result = []
 
-    ranking = sorted(
-        counter.items(),
-        key=lambda x: x[1],
-        reverse=True
-    )
+    rank = 1
 
-    return ranking[:50]
+    for nick, count in nick_counter.most_common():
+        share = round(
+            (count / total_posts) * 100,
+            2
+        )
+
+        result.append({
+            "rank": rank,
+            "nickname": nick,
+            "count": count,
+            "share": share
+        })
+
+        rank += 1
+
+    return {
+        "gallery": gallery_name,
+        "total": total_posts,
+        "result": result
+    }
