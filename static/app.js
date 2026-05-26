@@ -64,3 +64,14 @@ function copyResult() {
 
     navigator.clipboard.writeText(text);
 }
+
+const res = await fetch("/api/crawl", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ url })
+});
+
+console.log("STATUS:", res.status);
+
+const data = await res.json();
+console.log("DATA:", data);
