@@ -19,9 +19,6 @@ BASE = {
 }
 
 
-# ---------------------------
-# URL 리다이렉트 해결
-# ---------------------------
 def resolve_url(url: str):
     url = url.strip()
     if not url.startswith("http"):
@@ -34,44 +31,25 @@ def resolve_url(url: str):
         return url
 
 
-# ---------------------------
-# gid 추출
-# ---------------------------
 def extract_gid(url: str):
     url = resolve_url(url)
     m = re.search(r"id=([a-zA-Z0-9_]+)", url)
     return m.group(1) if m else None
 
 
-# ---------------------------
-# mini는 URL 기반 확정
-# ---------------------------
 def is_mini_url(url: str):
     return "/mini/" in url
 
 
-# ---------------------------
-# DCInside 갤러리 검증 (핵심 수정)
-# ---------------------------
 def is_valid_gallery_page(html: str):
     soup = BeautifulSoup(html, "lxml")
-
-    # 1) classic list
-    has_row = bool(soup.select_one("tr.ub-content"))
-
-    # 2) modern / fallback list
-    has_title = bool(soup.select_one(".gall_tit"))
-
-    # 3) container 존재 여부 (추가 안정성)
-    has_wrap = bool(soup.select_one(".gall_listwrap"))
-
-    # 셋 중 하나라도 있으면 "갤러리 리스트 페이지"로 인정
-    return has_row or has_title or has_wrap
+    return bool(
+        soup.select_one("tr.ub-content")
+        or soup.select_one(".gall_tit")
+        or soup.select_one(".gall_listwrap")
+    )
 
 
-# ---------------------------
-# 타입 탐지 (probe only)
-# ---------------------------
 def detect_gallery_type(user_url: str):
     url = resolve_url(user_url)
     gid = extract_gid(url)
@@ -79,11 +57,9 @@ def detect_gallery_type(user_url: str):
     if not gid:
         return None, None
 
-    # 1) mini는 즉시 확정 (probe 금지)
     if is_mini_url(url):
         return "mini", url
 
-    # 2) mgallery / board만 probe
     for t in ["mgallery", "board"]:
         test_url = BASE[t].format(gid=gid)
 
@@ -92,53 +68,12 @@ def detect_gallery_type(user_url: str):
         except:
             continue
 
-        if r.status_code != 200:
-            continue
-
-        if is_valid_gallery_page(r.text):
+        if r.status_code == 200 and is_valid_gallery_page(r.text):
             return t, test_url
 
     return None, None
 
 
-# ---------------------------
-# 갤러리 이름
-# ---------------------------
-def get_gallery_name(soup):
-    meta = soup.select_one('meta[name="title"]')
-    if meta:
-        return meta.get("content", "").split(" - ")[0].strip()
-
-    h1 = soup.select_one("h1")
-    if h1:
-        return h1.get_text(strip=True)
-
-    return "갤러리"
-
-
-# ---------------------------
-# 필터
-# ---------------------------
-def is_filtered_row(row):
-    classes = row.get("class") or []
-
-    if "notice" in classes:
-        return True
-
-    num = row.select_one(".gall_num")
-    if num and num.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
-        return True
-
-    subject = row.select_one(".gall_subject")
-    if subject and subject.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
-        return True
-
-    return False
-
-
-# ---------------------------
-# 날짜 파싱
-# ---------------------------
 def parse_post_date(row):
     el = row.select_one(".gall_date")
     if not el:
@@ -172,13 +107,55 @@ def parse_post_date(row):
     return None
 
 
-# ---------------------------
-# 크롤링
-# ---------------------------
+def is_filtered_row(row):
+    classes = row.get("class") or []
+
+    if "notice" in classes:
+        return True
+
+    num = row.select_one(".gall_num")
+    if num and num.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
+        return True
+
+    subject = row.select_one(".gall_subject")
+    if subject and subject.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
+        return True
+
+    return False
+
+
+def get_writer(row):
+    el = row.select_one(".gall_writer") or row.select_one(".ub-writer")
+
+    if not el:
+        return "ㅇㅇ"
+
+    return (
+        el.get("data-nick")
+        or el.get("data-user_nick")
+        or el.get("title")
+        or el.get_text(strip=True)
+        or "ㅇㅇ"
+    ).strip() or "ㅇㅇ"
+
+
+def get_gallery_name(soup):
+    meta = soup.select_one('meta[name="title"]')
+    if meta:
+        return meta.get("content", "").split(" - ")[0].strip()
+
+    h1 = soup.select_one("h1")
+    if h1:
+        return h1.get_text(strip=True)
+
+    return "갤러리"
+
+
 def crawl_base(base_url, cutoff, counter):
     page = 1
+    consecutive_old_pages = 0
 
-    while page <= 100:
+    while page <= 300:
         url = f"{base_url}&page={page}"
 
         try:
@@ -195,39 +172,34 @@ def crawl_base(base_url, cutoff, counter):
         if not rows:
             break
 
-        page_has_in_range = False
+        page_has_new = False
+        page_old_count = 0
 
         for row in rows:
             if is_filtered_row(row):
                 continue
 
             dt = parse_post_date(row)
-            in_range = True if dt is None else (dt >= cutoff)
+            if dt is None or dt >= cutoff:
+                page_has_new = True
 
-            if in_range:
-                page_has_in_range = True
-
-                writer = row.select_one(".gall_writer") or row.select_one(".ub-writer")
-
-                nick = "ㅇㅇ"
-                if writer:
-                    nick = (
-                        writer.get("data-nick")
-                        or writer.get_text(strip=True)
-                        or "ㅇㅇ"
-                    ).strip() or "ㅇㅇ"
-
+            if dt is None or dt >= cutoff:
+                nick = get_writer(row)
                 counter[nick] += 1
+            else:
+                page_old_count += 1
 
-        if not page_has_in_range:
+        if page_has_new:
+            consecutive_old_pages = 0
+        else:
+            consecutive_old_pages += 1
+
+        if consecutive_old_pages >= 3:
             break
 
         page += 1
 
 
-# ---------------------------
-# 메인
-# ---------------------------
 def crawl_gallery(user_url: str):
     gtype, base_url = detect_gallery_type(user_url)
 
@@ -237,9 +209,7 @@ def crawl_gallery(user_url: str):
     gid = extract_gid(user_url)
 
     now = datetime.now()
-    cutoff = (now - timedelta(days=7)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    cutoff = now - timedelta(days=7)
 
     counter = Counter()
 
