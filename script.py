@@ -32,15 +32,13 @@ def normalize_url(url: str):
 
 
 # ---------------------------
-# resolve + "진짜 type 판별"
+# resolve + type/id
 # ---------------------------
 def resolve_dcinside(url: str):
     url = normalize_url(url)
 
     r = requests.get(url, headers=HEADERS, timeout=10, allow_redirects=True)
-
     final_url = r.url
-    html = r.text
 
     parsed = urlparse(final_url)
 
@@ -50,39 +48,26 @@ def resolve_dcinside(url: str):
     if not gid:
         gid = parsed.path.strip("/").split("/")[-1]
 
-    # ---------------------------
-    # 핵심: type 판별 로직 수정
-    # ---------------------------
-
     path = parsed.path
 
-    # mini는 명확
     if "/mini/" in path:
         gtype = "mini"
-
-    # mgallery는 두 가지 기준
     elif "/mgallery/" in path:
         gtype = "mgallery"
-
     else:
-        # 🔥 핵심 보정 로직
-        # krstock 같은 축약은 DC 구조상 mgallery로 귀결됨
-        if "krstock" in final_url:
-            gtype = "mgallery"
-        else:
-            # fallback (실제 board 갤러리)
-            gtype = "board"
+        gtype = "board"
 
-    return gtype, gid, final_url, html
+    # krstock 보정 (mgallery 고정)
+    if "krstock" in final_url:
+        gtype = "mgallery"
+
+    return gtype, gid, final_url
 
 
 # ---------------------------
 # base url
 # ---------------------------
 def build_base_url(gtype, gid):
-    if not gid:
-        return None
-
     if gtype == "mini":
         return f"https://gall.dcinside.com/mini/board/lists/?id={gid}"
     elif gtype == "mgallery":
@@ -174,6 +159,7 @@ def crawl_base(base_url, cutoff, counter):
             if not post_date:
                 continue
 
+            # cutoff 기준 적용
             if post_date < cutoff:
                 continue
 
@@ -196,7 +182,7 @@ def crawl_base(base_url, cutoff, counter):
 # main
 # ---------------------------
 def crawl_gallery(url: str):
-    gtype, gid, final_url, html = resolve_dcinside(url)
+    gtype, gid, final_url = resolve_dcinside(url)
 
     if not gid:
         raise ValueError("갤러리 ID 추출 실패")
@@ -205,7 +191,13 @@ def crawl_gallery(url: str):
 
     counter = Counter()
 
-    cutoff = datetime.now() - timedelta(days=7)
+    # ---------------------------
+    # 핵심 변경 부분
+    # ---------------------------
+    now = datetime.now()
+    cutoff = (now - timedelta(days=7)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
 
     crawl_base(base_url, cutoff, counter)
 
@@ -227,6 +219,7 @@ def crawl_gallery(url: str):
         "type": gtype,
         "gallery": gid,
         "final_url": final_url,
+        "cutoff": cutoff.strftime("%Y-%m-%d %H:%M:%S"),
         "total": total,
         "result": result
     }
