@@ -3,6 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 from collections import Counter
 from datetime import datetime, timedelta
+from urllib.parse import urlparse, parse_qs
 
 
 HEADERS = {
@@ -15,25 +16,37 @@ HEADERS = {
 
 
 # ---------------------------
-# gallery id 추출
+# gallery id 추출 (모바일/PC 통합)
 # ---------------------------
 def extract_gallery_id(url: str):
-    patterns = [
-        r"[?&]id=([a-zA-Z0-9_]+)",
-        r"m\.dcinside\.com/(?:board|mgallery|mini)/([a-zA-Z0-9_]+)",
-        r"dcinside\.com/(?:board|mgallery|mini)/([a-zA-Z0-9_]+)",
-    ]
+    parsed = urlparse(url)
 
-    for p in patterns:
-        m = re.search(p, url)
-        if m:
-            return m.group(1)
+    # 1) ?id=xxx (가장 정확)
+    qs = parse_qs(parsed.query)
+    if "id" in qs and qs["id"][0]:
+        return qs["id"][0]
+
+    path = parsed.path.strip("/")
+
+    # 2) /board/lists?id=xxx 같은 구조 보강
+    m = re.search(r"/board/lists/([a-zA-Z0-9_]+)", parsed.path)
+    if m:
+        return m.group(1)
+
+    # 3) 루트형 (m.dcinside.com/krstock)
+    if re.match(r"^[a-zA-Z0-9_]+$", path):
+        return path
+
+    # 4) 기존 구조 fallback
+    m = re.search(r"/(?:board|mgallery|mini)/([a-zA-Z0-9_]+)", parsed.path)
+    if m:
+        return m.group(1)
 
     return None
 
 
 # ---------------------------
-# 3개 타입 전부 크롤링
+# base url 생성
 # ---------------------------
 def get_base_urls(gid: str):
     return [
@@ -57,25 +70,29 @@ def get_gallery_name(soup):
 
 
 # ---------------------------
-# 필터
+# 필터 (공지/설문/AD 제거)
 # ---------------------------
 def is_filtered_row(row):
     if "notice" in (row.get("class") or []):
         return True
 
     num = row.select_one(".gall_num")
-    if num and num.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
-        return True
+    if num:
+        t = num.get_text(strip=True)
+        if t in ["공지", "설문", "AD", "광고"]:
+            return True
 
     subject = row.select_one(".gall_subject")
-    if subject and subject.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
-        return True
+    if subject:
+        t = subject.get_text(strip=True)
+        if t in ["공지", "설문", "AD", "광고"]:
+            return True
 
     return False
 
 
 # ---------------------------
-# 날짜 파싱 (title 우선)
+# 날짜 파싱
 # ---------------------------
 def parse_post_date(row):
     date_el = row.select_one(".gall_date")
@@ -112,27 +129,22 @@ def parse_post_date(row):
 # ---------------------------
 # 페이지 크롤링
 # ---------------------------
-def crawl_base(base_url, cutoff, counter, now):
+def crawl_base(base_url, cutoff, counter):
     page = 1
-    stop = False
 
-    while True:
+    while page <= 100:
         url = f"{base_url}&page={page}"
 
         try:
             r = requests.get(url, headers=HEADERS, timeout=10)
+            if r.status_code != 200:
+                break
         except:
-            break
-
-        if r.status_code != 200:
             break
 
         soup = BeautifulSoup(r.text, "lxml")
 
         rows = soup.select("tr.ub-content")
-        if not rows:
-            rows = soup.select("tr")
-
         if not rows:
             break
 
@@ -141,9 +153,10 @@ def crawl_base(base_url, cutoff, counter, now):
                 continue
 
             post_date = parse_post_date(row)
+            if not post_date:
+                continue  # 핵심 수정: 날짜 없는 글 제외
 
-            if post_date and post_date < cutoff:
-                stop = True
+            if post_date < cutoff:
                 continue
 
             writer = row.select_one(".gall_writer") or row.select_one(".ub-writer")
@@ -152,7 +165,6 @@ def crawl_base(base_url, cutoff, counter, now):
                 nickname = (
                     writer.get("data-nick")
                     or writer.get_text(strip=True)
-                    or "ㅇㅇ"
                 ).strip()
             else:
                 nickname = "ㅇㅇ"
@@ -162,13 +174,7 @@ def crawl_base(base_url, cutoff, counter, now):
 
             counter[nickname] += 1
 
-        if stop:
-            break
-
         page += 1
-
-        if page > 100:
-            break
 
 
 # ---------------------------
@@ -177,12 +183,10 @@ def crawl_base(base_url, cutoff, counter, now):
 def crawl_gallery(user_url: str):
     gid = extract_gallery_id(user_url)
     if not gid:
-        raise Exception("갤러리 ID를 찾을 수 없음")
+        raise ValueError("갤러리 ID 추출 실패 (URL 확인 필요)")
 
     now = datetime.now()
-    cutoff = (now - timedelta(days=7)).replace(
-        hour=23, minute=59, second=59, microsecond=0
-    )
+    cutoff = now - timedelta(days=7)
 
     counter = Counter()
     gallery_name = gid
@@ -200,7 +204,7 @@ def crawl_gallery(user_url: str):
             if gallery_name == gid:
                 gallery_name = get_gallery_name(soup)
 
-            crawl_base(base_url, cutoff, counter, now)
+            crawl_base(base_url, cutoff, counter)
 
         except:
             continue
@@ -212,12 +216,14 @@ def crawl_gallery(user_url: str):
 
     for nickname, count in counter.most_common():
         share = round((count / total) * 100, 2) if total else 0
+
         result.append({
             "rank": rank,
             "nickname": nickname,
             "count": count,
             "share": share
         })
+
         rank += 1
 
     return {
