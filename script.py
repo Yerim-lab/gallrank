@@ -4,7 +4,6 @@ from bs4 import BeautifulSoup
 from collections import Counter
 from datetime import datetime, timedelta
 
-
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -13,7 +12,7 @@ HEADERS = {
     )
 }
 
-BASE_TEMPLATES = {
+BASE = {
     "board": "https://gall.dcinside.com/board/lists/?id={gid}",
     "mgallery": "https://gall.dcinside.com/mgallery/board/lists/?id={gid}",
     "mini": "https://gall.dcinside.com/mini/board/lists/?id={gid}",
@@ -21,12 +20,11 @@ BASE_TEMPLATES = {
 
 
 # ---------------------------
-# ID 추출
+# URL → ID 추출 (축약 포함)
 # ---------------------------
 def extract_gallery_id(url: str):
     url = url.strip()
 
-    # scheme 보정
     if not url.startswith("http"):
         url = "https://" + url
 
@@ -45,13 +43,11 @@ def extract_gallery_id(url: str):
 
 
 # ---------------------------
-# 갤러리 타입 자동 판별
+# 갤러리 타입 자동 탐색 (핵심)
 # ---------------------------
 def detect_gallery_type(gid: str):
-    test_url_order = ["mgallery", "board", "mini"]
-
-    for t in test_url_order:
-        url = BASE_TEMPLATES[t].format(gid=gid)
+    for t in ["mgallery", "board", "mini"]:
+        url = BASE[t].format(gid=gid)
 
         try:
             r = requests.get(url, headers=HEADERS, timeout=10)
@@ -62,9 +58,8 @@ def detect_gallery_type(gid: str):
             continue
 
         soup = BeautifulSoup(r.text, "lxml")
-
-        # 게시글 row 존재 여부로 판단
         rows = soup.select("tr.ub-content")
+
         if rows:
             return t, url
 
@@ -72,7 +67,24 @@ def detect_gallery_type(gid: str):
 
 
 # ---------------------------
-# 필터
+# 갤러리 이름 추출 (정확 버전)
+# ---------------------------
+def get_gallery_name(soup):
+    meta = soup.select_one('meta[name="title"]')
+
+    if meta:
+        content = meta.get("content", "")
+        return content.split(" - ")[0].strip()
+
+    h1 = soup.select_one("h1")
+    if h1:
+        return h1.get_text(strip=True)
+
+    return "갤러리"
+
+
+# ---------------------------
+# 필터 (공지 / 설문 / 광고 제거)
 # ---------------------------
 def is_filtered_row(row):
     if "notice" in (row.get("class") or []):
@@ -93,30 +105,30 @@ def is_filtered_row(row):
 # 날짜 파싱
 # ---------------------------
 def parse_post_date(row):
-    date_el = row.select_one(".gall_date")
-    if not date_el:
+    el = row.select_one(".gall_date")
+    if not el:
         return None
 
-    title = date_el.get("title")
-    if title:
+    t = el.get("title")
+    if t:
         try:
-            return datetime.strptime(title, "%Y-%m-%d %H:%M:%S")
+            return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
         except:
             pass
 
-    text = date_el.get_text(strip=True)
+    txt = el.get_text(strip=True)
     now = datetime.now()
 
-    if re.match(r"^\d{1,2}:\d{2}$", text):
-        h, m = map(int, text.split(":"))
+    if re.match(r"^\d{1,2}:\d{2}$", txt):
+        h, m = map(int, txt.split(":"))
         return now.replace(hour=h, minute=m, second=0, microsecond=0)
 
-    m = re.match(r"^(\d{1,2})\.(\d{1,2})$", text)
+    m = re.match(r"^(\d{1,2})\.(\d{1,2})$", txt)
     if m:
         mo, d = map(int, m.groups())
         return datetime(now.year, mo, d)
 
-    m = re.match(r"^(\d{4})\.(\d{1,2})\.(\d{1,2})$", text)
+    m = re.match(r"^(\d{4})\.(\d{1,2})\.(\d{1,2})$", txt)
     if m:
         y, mo, d = map(int, m.groups())
         return datetime(y, mo, d)
@@ -125,7 +137,7 @@ def parse_post_date(row):
 
 
 # ---------------------------
-# 크롤링
+# 크롤링 엔진
 # ---------------------------
 def crawl_base(base_url, cutoff, counter):
     page = 1
@@ -154,6 +166,7 @@ def crawl_base(base_url, cutoff, counter):
                 continue
 
             dt = parse_post_date(row)
+
             if dt and dt < cutoff:
                 stop = True
                 continue
@@ -161,16 +174,18 @@ def crawl_base(base_url, cutoff, counter):
             writer = row.select_one(".gall_writer") or row.select_one(".ub-writer")
 
             if writer:
-                nickname = (
+                nick = (
                     writer.get("data-nick")
                     or writer.get_text(strip=True)
                     or "ㅇㅇ"
                 ).strip()
             else:
-                nickname = "ㅇㅇ"
+                nick = "ㅇㅇ"
 
-            if nickname:
-                counter[nickname] += 1
+            if not nick:
+                nick = "ㅇㅇ"
+
+            counter[nick] += 1
 
         if stop:
             break
@@ -179,7 +194,7 @@ def crawl_base(base_url, cutoff, counter):
 
 
 # ---------------------------
-# main
+# 메인
 # ---------------------------
 def crawl_gallery(user_url: str):
     gid = extract_gallery_id(user_url)
@@ -188,7 +203,7 @@ def crawl_gallery(user_url: str):
 
     now = datetime.now()
 
-    # ★ 핵심 수정: "7일 전 00시 기준"
+    # 7일 전 00:00 기준
     cutoff = (now - timedelta(days=7)).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
@@ -197,7 +212,15 @@ def crawl_gallery(user_url: str):
 
     gtype, base_url = detect_gallery_type(gid)
     if not base_url:
-        raise Exception("갤러리 타입 판별 실패 (board/mgallery/mini 모두 실패)")
+        raise Exception("갤러리 타입 판별 실패")
+
+    # 이름은 확정된 URL 기준으로 재조회
+    try:
+        r = requests.get(base_url, headers=HEADERS, timeout=10)
+        soup = BeautifulSoup(r.text, "lxml")
+        gallery_name = get_gallery_name(soup)
+    except:
+        gallery_name = gid
 
     crawl_base(base_url, cutoff, counter)
 
@@ -213,7 +236,7 @@ def crawl_gallery(user_url: str):
         })
 
     return {
-        "gallery": gid,
+        "gallery": gallery_name,
         "type": gtype,
         "total": total,
         "cutoff": cutoff.strftime("%Y-%m-%d %H:%M:%S"),
