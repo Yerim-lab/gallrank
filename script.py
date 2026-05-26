@@ -15,19 +15,14 @@ HEADERS = {
 }
 
 
-def normalize_dc_url(url):
+def extract_gallery_id(url):
     url = url.strip()
 
-    # id=xxx 추출
+    # id=xxx 우선 추출
     m = re.search(r"id=([a-zA-Z0-9_]+)", url)
 
     if m:
-        gid = m.group(1)
-
-        return (
-            f"https://gall.dcinside.com/"
-            f"board/lists/?id={gid}"
-        )
+        return m.group(1)
 
     # 숏 URL 처리
     m = re.search(
@@ -44,15 +39,17 @@ def normalize_dc_url(url):
             "board"
         ]
 
-        if gid in blocked:
-            return None
-
-        return (
-            f"https://gall.dcinside.com/"
-            f"board/lists/?id={gid}"
-        )
+        if gid not in blocked:
+            return gid
 
     return None
+
+
+def build_gallery_url(gallery_id):
+    return (
+        "https://gall.dcinside.com/"
+        f"board/lists/?id={gallery_id}"
+    )
 
 
 def extract_gallery_name(soup):
@@ -61,16 +58,13 @@ def extract_gallery_name(soup):
     if title:
         return title.text.strip()
 
-    page_title = soup.title.text.strip()
-
-    return page_title.replace(" - DC Inside", "").strip()
+    return "갤러리"
 
 
 def parse_date(date_text):
     now = datetime.now()
 
     try:
-        # 05.26
         if "." in date_text and ":" not in date_text:
             month, day = map(int, date_text.split("."))
 
@@ -80,7 +74,6 @@ def parse_date(date_text):
                 day
             )
 
-        # 2026-05-26
         if "-" in date_text:
             return datetime.strptime(
                 date_text,
@@ -93,7 +86,16 @@ def parse_date(date_text):
     return None
 
 
-def crawl_gallery(url, days=7):
+def crawl_gallery(user_url, days=7):
+    gallery_id = extract_gallery_id(user_url)
+
+    if not gallery_id:
+        raise Exception("갤러리 ID 추출 실패")
+
+    base_url = build_gallery_url(gallery_id)
+
+    print("FINAL BASE URL:", base_url)
+
     limit_date = (
         datetime.now() - timedelta(days=days)
     )
@@ -106,16 +108,21 @@ def crawl_gallery(url, days=7):
     page = 1
 
     while True:
-        page_url = f"{url}&page={page}"
+        params = {
+            "id": gallery_id,
+            "page": page
+        }
 
-        print("CRAWL URL:", page_url)
+        print("PAGE:", page)
 
         res = requests.get(
-            page_url,
+            "https://gall.dcinside.com/board/lists/",
+            params=params,
             headers=HEADERS,
             timeout=10
         )
 
+        print("REQUEST URL:", res.url)
         print("STATUS:", res.status_code)
 
         if res.status_code != 200:
@@ -141,7 +148,6 @@ def crawl_gallery(url, days=7):
         stop = False
 
         for row in rows:
-            # 공지 제외
             if "notice" in row.get("class", []):
                 continue
 
@@ -162,7 +168,6 @@ def crawl_gallery(url, days=7):
             if not post_date:
                 continue
 
-            # 기간 초과
             if post_date < limit_date:
                 stop = True
                 break
