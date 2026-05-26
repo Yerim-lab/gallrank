@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 app = Flask(__name__)
 
 # -----------------------
-# 모바일 세션 고정
+# SESSION (mobile UA 고정)
 # -----------------------
 session = requests.Session()
 session.headers.update({
@@ -25,7 +25,7 @@ session.headers.update({
 
 
 # -----------------------
-# 시간 범위
+# TIME RANGE
 # -----------------------
 def get_range(days=7):
     now = datetime.now()
@@ -33,11 +33,10 @@ def get_range(days=7):
 
 
 # -----------------------
-# m.dcinside URL 강제 변환
+# URL PARSE + NORMALIZE (FIXED)
 # -----------------------
-def normalize_to_mobile(url):
+def normalize_to_mobile(url: str) -> str:
     parsed = urlparse(url)
-    path = parsed.path
 
     gid = parse_qs(parsed.query).get("id", [None])[0]
 
@@ -47,21 +46,23 @@ def normalize_to_mobile(url):
             gid = m.group(1)
 
     if not gid:
-        raise ValueError("invalid url")
+        raise ValueError("invalid url: no gallery id")
 
-    # mini / mgallery / board 모두 m.dcinside로 통일
+    path = parsed.path.lower()
+
+    # m.dcinside는 무조건 list?id 구조가 정상
     if "/mini" in path:
-        return f"https://m.dcinside.com/mini/{gid}"
+        return f"https://m.dcinside.com/mini/list?id={gid}"
     elif "/mgallery" in path:
-        return f"https://m.dcinside.com/mgallery/{gid}"
+        return f"https://m.dcinside.com/mgallery/list?id={gid}"
     else:
-        return f"https://m.dcinside.com/board/{gid}"
+        return f"https://m.dcinside.com/board/list?id={gid}"
 
 
 # -----------------------
-# 갤러리 이름
+# GALLERY NAME
 # -----------------------
-def gallery_name(html):
+def gallery_name(html: str):
     soup = BeautifulSoup(html, "html.parser")
 
     meta = soup.select_one("meta[name='description']")
@@ -76,11 +77,11 @@ def gallery_name(html):
 
 
 # -----------------------
-# 날짜 파싱 (m 기준 대응)
+# DATE PARSER (robust mobile)
 # -----------------------
 def parse_date(el):
     try:
-        txt = el.get_text(strip=True)
+        txt = el.get_text(" ", strip=True)
 
         # 2026.05.26 13:22
         m = re.search(r"(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})\s+(\d{1,2}):(\d{2})", txt)
@@ -88,13 +89,13 @@ def parse_date(el):
             y, mo, d, h, mi = map(int, m.groups())
             return datetime(y, mo, d, h, mi)
 
-        # HH:MM (오늘)
+        # HH:MM
         if re.match(r"^\d{1,2}:\d{2}$", txt):
             h, mi = map(int, txt.split(":"))
             now = datetime.now()
             return now.replace(hour=h, minute=mi, second=0, microsecond=0)
 
-        # title fallback
+        # fallback title format
         t = el.get("title")
         if t:
             return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
@@ -106,7 +107,7 @@ def parse_date(el):
 
 
 # -----------------------
-# 제외 대상
+# SKIP ROWS
 # -----------------------
 def is_skip(row):
     el = row.select_one(".gall_subject")
@@ -117,19 +118,20 @@ def is_skip(row):
 
 
 # -----------------------
-# 작성자 fallback (m 대응)
+# WRITER
 # -----------------------
 def get_writer(row):
     return (
         row.select_one(".nickname") or
         row.select_one(".gall_writer") or
         row.select_one(".writer") or
+        row.select_one(".ub-writer") or
         row.select_one("td")
     )
 
 
 # -----------------------
-# 날짜 fallback
+# DATE FIELD
 # -----------------------
 def get_date(row):
     return (
@@ -140,7 +142,7 @@ def get_date(row):
 
 
 # -----------------------
-# 크롤러
+# CORE CRAWLER
 # -----------------------
 def crawl(url):
     base = normalize_to_mobile(url)
@@ -156,7 +158,7 @@ def crawl(url):
     while page <= MAX_PAGE:
 
         try:
-            res = session.get(f"{base}?page={page}", timeout=7)
+            res = session.get(f"{base}&page={page}", timeout=7)
         except Exception as e:
             return {"error": f"request_fail: {str(e)}"}
 
@@ -168,16 +170,16 @@ def crawl(url):
         if page == 1:
             gname = gallery_name(html)
 
-            # m.dcinside 최소 구조 체크
-            if "m.dcinside.com" not in res.url and "gallery" not in html:
+            # 최소 방어
+            if "dcinside" not in html:
                 return {
-                    "error": "blocked_or_invalid_html",
+                    "error": "invalid_response",
                     "sample": html[:300]
                 }
 
         soup = BeautifulSoup(html, "html.parser")
 
-        # m 페이지 대응 row selector
+        # m.dcinside 구조 대응
         rows = (
             soup.select("li.ub-content") or
             soup.select("tr.ub-content") or
