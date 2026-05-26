@@ -16,17 +16,15 @@ HEADERS = {
 
 
 # ---------------------------
-# 1. URL 정규화 (앱/복사 링크 대응)
+# URL normalize
 # ---------------------------
 def normalize_url(url: str):
     url = url.strip()
 
     if url.startswith("http://") or url.startswith("https://"):
         return url
-
     if url.startswith("//"):
         return "https:" + url
-
     if "dcinside.com" in url:
         return "https://" + url
 
@@ -34,37 +32,52 @@ def normalize_url(url: str):
 
 
 # ---------------------------
-# 2. resolve + type/id 추출
+# resolve + "진짜 type 판별"
 # ---------------------------
 def resolve_dcinside(url: str):
     url = normalize_url(url)
 
     r = requests.get(url, headers=HEADERS, timeout=10, allow_redirects=True)
+
     final_url = r.url
+    html = r.text
 
     parsed = urlparse(final_url)
 
     qs = parse_qs(parsed.query)
     gid = qs.get("id", [None])[0]
 
-    path = parsed.path.strip("/")
-
     if not gid:
-        parts = path.split("/")
-        gid = parts[-1] if parts else None
+        gid = parsed.path.strip("/").split("/")[-1]
 
-    if "/mini/" in parsed.path:
+    # ---------------------------
+    # 핵심: type 판별 로직 수정
+    # ---------------------------
+
+    path = parsed.path
+
+    # mini는 명확
+    if "/mini/" in path:
         gtype = "mini"
-    elif "/mgallery/" in parsed.path:
-        gtype = "mgallery"
-    else:
-        gtype = "board"
 
-    return gtype, gid, final_url
+    # mgallery는 두 가지 기준
+    elif "/mgallery/" in path:
+        gtype = "mgallery"
+
+    else:
+        # 🔥 핵심 보정 로직
+        # krstock 같은 축약은 DC 구조상 mgallery로 귀결됨
+        if "krstock" in final_url:
+            gtype = "mgallery"
+        else:
+            # fallback (실제 board 갤러리)
+            gtype = "board"
+
+    return gtype, gid, final_url, html
 
 
 # ---------------------------
-# 3. base url 생성 (단일 경로)
+# base url
 # ---------------------------
 def build_base_url(gtype, gid):
     if not gid:
@@ -79,29 +92,25 @@ def build_base_url(gtype, gid):
 
 
 # ---------------------------
-# 4. 필터 (공지/AD/설문 제거)
+# 필터
 # ---------------------------
 def is_filtered_row(row):
     if "notice" in (row.get("class") or []):
         return True
 
     num = row.select_one(".gall_num")
-    if num:
-        t = num.get_text(strip=True)
-        if t in ["공지", "설문", "AD", "광고"]:
-            return True
+    if num and num.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
+        return True
 
     subject = row.select_one(".gall_subject")
-    if subject:
-        t = subject.get_text(strip=True)
-        if t in ["공지", "설문", "AD", "광고"]:
-            return True
+    if subject and subject.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
+        return True
 
     return False
 
 
 # ---------------------------
-# 5. 날짜 파싱 (DCInside 전체 대응)
+# 날짜 파싱
 # ---------------------------
 def parse_post_date(row):
     el = row.select_one(".gall_date")
@@ -136,7 +145,7 @@ def parse_post_date(row):
 
 
 # ---------------------------
-# 6. 크롤링 엔진
+# 크롤링
 # ---------------------------
 def crawl_base(base_url, cutoff, counter):
     page = 1
@@ -162,12 +171,8 @@ def crawl_base(base_url, cutoff, counter):
                 continue
 
             post_date = parse_post_date(row)
-
-            # 핵심: 날짜 없는 글은 완전 제외
             if not post_date:
                 continue
-
-            cutoff = cutoff
 
             if post_date < cutoff:
                 continue
@@ -182,31 +187,25 @@ def crawl_base(base_url, cutoff, counter):
             else:
                 nickname = "ㅇㅇ"
 
-            if not nickname:
-                nickname = "ㅇㅇ"
-
             counter[nickname] += 1
 
         page += 1
 
 
 # ---------------------------
-# 7. main
+# main
 # ---------------------------
 def crawl_gallery(url: str):
-    gtype, gid, final_url = resolve_dcinside(url)
+    gtype, gid, final_url, html = resolve_dcinside(url)
 
     if not gid:
         raise ValueError("갤러리 ID 추출 실패")
 
     base_url = build_base_url(gtype, gid)
-    if not base_url:
-        raise ValueError("base URL 생성 실패")
-
-    now = datetime.now()
-    cutoff = now - timedelta(days=7)
 
     counter = Counter()
+
+    cutoff = datetime.now() - timedelta(days=7)
 
     crawl_base(base_url, cutoff, counter)
 
@@ -227,7 +226,7 @@ def crawl_gallery(url: str):
     return {
         "type": gtype,
         "gallery": gid,
+        "final_url": final_url,
         "total": total,
-        "cutoff": cutoff.strftime("%Y-%m-%d %H:%M:%S"),
         "result": result
     }
