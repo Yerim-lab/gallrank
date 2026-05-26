@@ -10,10 +10,16 @@ from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
+# -----------------------
+# 모바일 세션 고정
+# -----------------------
 session = requests.Session()
 session.headers.update({
-    "User-Agent": "Mozilla/5.0",
-    "Referer": "https://gall.dcinside.com/",
+    "User-Agent": (
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
+        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
+    ),
+    "Referer": "https://m.dcinside.com/",
     "Accept-Language": "ko-KR,ko;q=0.9"
 })
 
@@ -27,9 +33,9 @@ def get_range(days=7):
 
 
 # -----------------------
-# URL 정리
+# m.dcinside URL 강제 변환
 # -----------------------
-def normalize(url):
+def normalize_to_mobile(url):
     parsed = urlparse(url)
     path = parsed.path
 
@@ -43,12 +49,13 @@ def normalize(url):
     if not gid:
         raise ValueError("invalid url")
 
-    if "/mgallery" in path:
-        return f"https://gall.dcinside.com/mgallery/board/lists?id={gid}"
-    elif "/mini" in path:
-        return f"https://gall.dcinside.com/mini/board/lists?id={gid}"
+    # mini / mgallery / board 모두 m.dcinside로 통일
+    if "/mini" in path:
+        return f"https://m.dcinside.com/mini/{gid}"
+    elif "/mgallery" in path:
+        return f"https://m.dcinside.com/mgallery/{gid}"
     else:
-        return f"https://gall.dcinside.com/board/lists/?id={gid}"
+        return f"https://m.dcinside.com/board/{gid}"
 
 
 # -----------------------
@@ -56,27 +63,41 @@ def normalize(url):
 # -----------------------
 def gallery_name(html):
     soup = BeautifulSoup(html, "html.parser")
+
     meta = soup.select_one("meta[name='description']")
-    if not meta:
-        return None
-    return meta.get("content", "").split(" - ")[0].strip()
+    if meta:
+        return meta.get("content", "").split(" - ")[0].strip()
+
+    title = soup.select_one("title")
+    if title:
+        return title.get_text(strip=True)
+
+    return None
 
 
 # -----------------------
-# 날짜 파싱
+# 날짜 파싱 (m 기준 대응)
 # -----------------------
 def parse_date(el):
     try:
+        txt = el.get_text(strip=True)
+
+        # 2026.05.26 13:22
+        m = re.search(r"(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})\s+(\d{1,2}):(\d{2})", txt)
+        if m:
+            y, mo, d, h, mi = map(int, m.groups())
+            return datetime(y, mo, d, h, mi)
+
+        # HH:MM (오늘)
+        if re.match(r"^\d{1,2}:\d{2}$", txt):
+            h, mi = map(int, txt.split(":"))
+            now = datetime.now()
+            return now.replace(hour=h, minute=mi, second=0, microsecond=0)
+
+        # title fallback
         t = el.get("title")
         if t:
             return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
-
-        txt = el.get_text(strip=True)
-
-        if re.match(r"^\d{1,2}:\d{2}$", txt):
-            h, m = map(int, txt.split(":"))
-            now = datetime.now()
-            return now.replace(hour=h, minute=m, second=0, microsecond=0)
 
     except:
         return None
@@ -85,34 +106,36 @@ def parse_date(el):
 
 
 # -----------------------
-# 제외 처리
+# 제외 대상
 # -----------------------
 def is_skip(row):
     el = row.select_one(".gall_subject")
     if not el:
         return False
+
     return el.get_text(strip=True) in ["공지", "AD", "설문"]
 
 
 # -----------------------
-# writer fallback
+# 작성자 fallback (m 대응)
 # -----------------------
 def get_writer(row):
     return (
         row.select_one(".nickname") or
         row.select_one(".gall_writer") or
-        row.select_one(".ub-writer") or
-        row.select_one("td.gall_writer")
+        row.select_one(".writer") or
+        row.select_one("td")
     )
 
 
 # -----------------------
-# date fallback
+# 날짜 fallback
 # -----------------------
 def get_date(row):
     return (
         row.select_one(".gall_date") or
-        row.select_one(".date_time")
+        row.select_one(".date_time") or
+        row.select_one(".time")
     )
 
 
@@ -120,12 +143,12 @@ def get_date(row):
 # 크롤러
 # -----------------------
 def crawl(url):
-    base = normalize(url)
+    base = normalize_to_mobile(url)
 
     start, end = get_range(7)
 
     page = 1
-    MAX_PAGE = 100
+    MAX_PAGE = 50
 
     users = defaultdict(int)
     gname = None
@@ -133,7 +156,7 @@ def crawl(url):
     while page <= MAX_PAGE:
 
         try:
-            res = session.get(f"{base}&page={page}", timeout=7)
+            res = session.get(f"{base}?page={page}", timeout=7)
         except Exception as e:
             return {"error": f"request_fail: {str(e)}"}
 
@@ -142,11 +165,11 @@ def crawl(url):
 
         html = res.text
 
-        # 1페이지 검증
         if page == 1:
             gname = gallery_name(html)
 
-            if "ub-content" not in html:
+            # m.dcinside 최소 구조 체크
+            if "m.dcinside.com" not in res.url and "gallery" not in html:
                 return {
                     "error": "blocked_or_invalid_html",
                     "sample": html[:300]
@@ -154,8 +177,14 @@ def crawl(url):
 
         soup = BeautifulSoup(html, "html.parser")
 
-        # 핵심: row fallback
-        rows = soup.select("tr.ub-content") or soup.select("tr")
+        # m 페이지 대응 row selector
+        rows = (
+            soup.select("li.ub-content") or
+            soup.select("tr.ub-content") or
+            soup.select("div.ub-content") or
+            soup.select("li") or
+            soup.select("tr")
+        )
 
         found = False
 
@@ -227,7 +256,7 @@ def api_crawl():
 
 
 # -----------------------
-# RUN (Render)
+# RUN
 # -----------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
