@@ -14,7 +14,6 @@ HEADERS = {
 
 
 def extract_gallery_id(url: str):
-
     match = re.search(r"id=([a-zA-Z0-9_]+)", url)
     if match:
         return match.group(1)
@@ -22,7 +21,6 @@ def extract_gallery_id(url: str):
     match = re.search(r"dcinside\.com/([a-zA-Z0-9_]+)", url)
     if match:
         gid = match.group(1)
-
         if gid not in ["board", "mgallery", "mini"]:
             return gid
 
@@ -30,7 +28,6 @@ def extract_gallery_id(url: str):
 
 
 def build_candidate_urls(gid: str):
-
     return [
         f"https://gall.dcinside.com/board/lists/?id={gid}",
         f"https://gall.dcinside.com/mgallery/board/lists/?id={gid}",
@@ -39,12 +36,9 @@ def build_candidate_urls(gid: str):
 
 
 def find_working_url(gid: str):
-
     for url in build_candidate_urls(gid):
-
         try:
             r = requests.get(url, headers=HEADERS, timeout=10)
-
             if r.status_code != 200:
                 continue
 
@@ -60,24 +54,42 @@ def find_working_url(gid: str):
 
 
 def get_gallery_name(soup: BeautifulSoup):
-
     meta = soup.select_one('meta[name="title"]')
 
     if not meta:
         return "갤러리"
 
     title = meta.get("content", "").strip()
+    return title.replace(" - 커뮤니티 포털 디시인사이드", "").strip()
 
-    title = title.replace(
-        " - 커뮤니티 포털 디시인사이드",
-        ""
-    ).strip()
 
-    return title
+def is_filtered_row(row) -> bool:
+    """
+    공지 / 설문 / AD 필터링 (핵심 로직)
+    """
+
+    # 1차: row class 기반
+    if "notice" in row.get("class", []):
+        return True
+
+    # 2차: gall_num 기준 (핵심)
+    num = row.select_one(".gall_num")
+    if num:
+        text = num.get_text(strip=True).upper()
+        if text in ["공지", "설문", "AD"]:
+            return True
+
+    # 3차: subject fallback
+    subject = row.select_one(".gall_subject")
+    if subject:
+        text = subject.get_text(strip=True)
+        if text in ["공지", "설문", "AD"]:
+            return True
+
+    return False
 
 
 def crawl_gallery(user_url: str):
-
     gid = extract_gallery_id(user_url)
 
     if not gid:
@@ -94,7 +106,6 @@ def crawl_gallery(user_url: str):
     page = 1
 
     while True:
-
         url = f"{base_url}&page={page}"
 
         try:
@@ -119,18 +130,9 @@ def crawl_gallery(user_url: str):
 
         for row in rows:
 
-            # 공지 제외
-            if "notice" in row.get("class", []):
+            # 핵심 필터 적용
+            if is_filtered_row(row):
                 continue
-
-            # 제목 분류 (설문 / AD / 공지 제외)
-            subject = row.select_one(".gall_subject")
-
-            if subject:
-                text = subject.get_text(strip=True)
-
-                if text in ["공지", "설문", "AD"]:
-                    continue
 
             writer = row.select_one(".gall_writer")
 
@@ -163,7 +165,6 @@ def crawl_gallery(user_url: str):
     rank = 1
 
     for nickname, count in counter.most_common():
-
         share = round((count / total) * 100, 2) if total else 0
 
         result.append({
