@@ -2,52 +2,35 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>갤창랭킹</title>
-
-    <link rel="stylesheet" href="/static/style.css">
+    <title>갤러리 랭킹</title>
+    <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
 
-<div class="wrap">
+<div class="container">
 
-    <div class="title">갤창랭킹</div>
+    <h1>갤러리 글 랭킹</h1>
 
-    <div class="search-container">
-
-        <div class="search-box">
-
-            <button class="icon-btn" id="pasteBtn">
-                <!-- paste icon -->
-                <svg viewBox="0 0 24 24">
-                    <path d="M9 3h6v2h4v16H5V5h4V3z" fill="none" stroke="white" stroke-width="2"/>
-                </svg>
-            </button>
-
-            <div class="divider"></div>
-
-            <input id="urlInput" placeholder="URL 입력" />
-
-            <div class="divider"></div>
-
-            <button class="icon-btn" id="searchBtn">
-                <!-- search icon -->
-                <svg viewBox="0 0 24 24">
-                    <circle cx="11" cy="11" r="7" fill="none" stroke="white" stroke-width="2"/>
-                    <path d="M20 20l-3-3" stroke="white" stroke-width="2"/>
-                </svg>
-            </button>
-
-        </div>
-
+    <div class="input-box">
+        <input id="urlInput" placeholder="갤러리 URL 입력">
+        <button onclick="runCrawl()">크롤링</button>
     </div>
 
-    <div id="result"></div>
+    <table>
+        <thead>
+            <tr>
+                <th>순위</th>
+                <th>닉네임</th>
+                <th>ID</th>
+                <th>글수</th>
+                <th>지분</th>
+            </tr>
+        </thead>
+        <tbody id="resultBody"></tbody>
+    </table>
 
 </div>
 
-<script src="/static/app.js"></script>
-
+<script src="app.js"></script>
 </body>
 </html>
