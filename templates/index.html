@@ -1,55 +1,92 @@
 ﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
+
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>갤창랭킹</title>
-    <link rel="stylesheet" href="/static/style.css">
+
+    <!-- Favicon -->
+    <link rel="icon" href="/static/favicon.png" type="image/png">
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="/static/style.css?v=777">
+
+    <!-- Google Ads -->
+    <script async src="https://pagead2.googletagmanager.com/gtag/js?id=AW-18190141007"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'AW-18190141007');
+    </script>
+
+    <!-- AdSense -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2538553648882016"
+     crossorigin="anonymous"></script>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18190141007"></script>
+    <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'AW-18190141007');
+    </script>
+    <!-- Event snippet for 페이지 조회 conversion page -->
+    <script>
+    gtag('event', 'conversion', {'send_to': 'AW-18190141007/ZBBmCMXo2LMcEM-M3uFD'});
+    </script>
+
+
+
 </head>
 
 <body>
 
-<div class="app">
+    <div class="container">
 
-    <div class="title">갤창랭킹</div>
+        <h1>갤창랭킹</h1>
 
-    <div class="search">
-        <input id="urlInput" placeholder="갤러리 URL 입력">
+        <div class="search-bar">
 
-        <button onclick="runCrawl()">
-            <svg viewBox="0 0 24 24" class="icon">
-                <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm11 3-6-6"/>
-            </svg>
+            <input
+                type="text"
+                id="urlInput"
+                placeholder="갤러리 URL 입력"
+                autocomplete="off"
+            >
 
-            <div class="dots">
-                <span></span><span></span><span></span>
-            </div>
-        </button>
-    </div>
+            <div class="divider"></div>
 
-    <div id="result" class="hidden">
+            <button id="pasteBtn" type="button" aria-label="붙여넣기">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
+                    fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-2" />
+                    <rect x="4" y="2" width="12" height="16" rx="2" />
+                </svg>
+            </button>
 
-        <div class="header">
-            <div id="meta"></div>
-            <button onclick="copy()">copy</button>
+            <div class="divider"></div>
+
+            <button id="searchBtn" type="button" aria-label="검색">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
+                    fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="7" />
+                    <line x1="16.65" y1="16.65" x2="21" y2="21" />
+                </svg>
+            </button>
+
         </div>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>순위</th>
-                    <th>닉네임</th>
-                    <th>글수</th>
-                    <th>지분</th>
-                </tr>
-            </thead>
-            <tbody id="tbody"></tbody>
-        </table>
+        <div id="result"></div>
 
     </div>
 
-</div>
-
-<script src="/static/app.js"></script>
+    <!-- JS -->
+    <script src="/static/app.js?v=777"></script>
 
 </body>
 </html>
