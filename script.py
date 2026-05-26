@@ -1,102 +1,204 @@
 import os
 import re
-from flask import Flask, request, jsonify, render_template
-import requests
-from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
 from collections import defaultdict
 from urllib.parse import urlparse, parse_qs
 
+import requests
+from flask import Flask, request, jsonify, render_template
+from bs4 import BeautifulSoup
+
 app = Flask(__name__)
 
-HEADERS = {"User-Agent": "Mozilla/5.0"}
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
+}
+
+# ---------------------------
+# 1. 시간 범위
+# ---------------------------
+def get_time_range(days=7):
+    now = datetime.now()
+    start = (now - timedelta(days=days)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return start, now
 
 
-# ----------------------------
-# 1. URL NORMALIZER (핵심)
-# ----------------------------
+# ---------------------------
+# 2. DC 날짜 파싱
+# ---------------------------
+def parse_dc_date(text):
+    text = text.strip()
+    now = datetime.now()
+
+    try:
+        # HH:MM (오늘)
+        if ":" in text:
+            h, m = map(int, text.split(":"))
+            return now.replace(hour=h, minute=m, second=0, microsecond=0)
+
+        # YYYY.MM.DD
+        if text.count(".") == 2:
+            return datetime.strptime(text, "%Y.%m.%d")
+
+        # MM.DD
+        if text.count(".") == 1:
+            m, d = map(int, text.split("."))
+            return datetime(now.year, m, d)
+
+    except:
+        return None
+
+    return None
+
+
+# ---------------------------
+# 3. URL 정규화
+# ---------------------------
 def normalize_dc_url(url: str):
-    """
-    return:
-    - type: board | mgallery | mini
-    - id: gallery id
-    - list_url: 크롤링용 URL
-    """
-
     url = url.strip()
-
     parsed = urlparse(url)
     path = parsed.path
     qs = parse_qs(parsed.query)
 
-    # id 추출
-    gallery_id = None
+    gid = qs.get("id", [None])[0]
 
-    if "id" in qs:
-        gallery_id = qs["id"][0]
+    gtype = "board"
 
-    # /mini/wendy 형태
-    match = re.search(r"/mini/([^/?]+)", path)
-    if match:
-        gallery_type = "mini"
-        gallery_id = gallery_id or match.group(1)
+    if "/mini" in path:
+        gtype = "mini"
+        match = re.search(r"/mini/(?:board/lists/)?([^/?]+)", path)
+        if match and not gid:
+            gid = match.group(1)
 
-    # /mgallery/wendy 또는 /mgallery/board/lists
     elif "/mgallery" in path:
-        gallery_type = "mgallery"
-        if not gallery_id:
-            match = re.search(r"/mgallery/(?:board/lists|[^/?]+)", path)
-            if match:
-                gallery_id = match.group(0).split("/")[-1]
+        gtype = "mgallery"
+        match = re.search(r"id=([^&/]+)", url)
+        if match and not gid:
+            gid = match.group(1)
 
-    # /board or root
     else:
-        gallery_type = "board"
-        if not gallery_id:
-            match = re.search(r"/(board|gallery)/?([^/?]+)?", path)
-            if match and match.group(2):
-                gallery_id = match.group(2)
+        gtype = "board"
+        match = re.search(r"id=([^&/]+)", url)
+        if match and not gid:
+            gid = match.group(1)
 
-    if not gallery_id:
+    if not gid:
         raise ValueError("Invalid DCInside URL")
 
-    # 정규화된 리스트 URL 생성
-    if gallery_type == "board":
-        list_url = f"https://gall.dcinside.com/board/lists/?id={gallery_id}"
-    elif gallery_type == "mgallery":
-        list_url = f"https://gall.dcinside.com/mgallery/board/lists?id={gallery_id}"
+    if gtype == "board":
+        list_url = f"https://gall.dcinside.com/board/lists/?id={gid}"
+    elif gtype == "mgallery":
+        list_url = f"https://gall.dcinside.com/mgallery/board/lists?id={gid}"
     else:
-        list_url = f"https://gall.dcinside.com/mini/board/lists?id={gallery_id}"
+        list_url = f"https://gall.dcinside.com/mini/board/lists?id={gid}"
 
-    return gallery_type, gallery_id, list_url
+    return gtype, gid, list_url
 
 
-# ----------------------------
-# 2. MVP CRAWLER (placeholder)
-# ----------------------------
+# ---------------------------
+# 4. 끌올 대응 종료 조건
+# ---------------------------
+def should_stop(pages_without_hit, threshold=2):
+    return pages_without_hit >= threshold
+
+
+# ---------------------------
+# 5. 크롤러 핵심
+# ---------------------------
 def crawl_gallery(url):
     gtype, gid, list_url = normalize_dc_url(url)
 
-    print("[DEBUG]", gtype, gid, list_url)
+    start, end = get_time_range(7)
 
-    # MVP 더미 (여기서 실제 크롤링 붙이면 됨)
-    result = [
-        {"rank": 1, "nickname": "test", "id": "user1", "count": 10, "share": 50.0},
-        {"rank": 2, "nickname": "test2", "id": "user2", "count": 5, "share": 25.0},
-    ]
+    page = 1
+    user_count = defaultdict(int)
+
+    pages_without_hit = 0
+    MAX_EMPTY_PAGES = 2
+    MAX_PAGE_LIMIT = 200
+
+    while True:
+        if page > MAX_PAGE_LIMIT:
+            break
+
+        try:
+            res = requests.get(f"{list_url}&page={page}", headers=HEADERS, timeout=5)
+        except:
+            break
+
+        if res.status_code != 200:
+            break
+
+        soup = BeautifulSoup(res.text, "html.parser")
+        rows = soup.select("tr.ub-content")
+
+        if not rows:
+            break
+
+        page_has_valid = False
+
+        for row in rows:
+            date_el = row.select_one(".gall_date")
+            nick_el = row.select_one(".nickname")
+
+            if not date_el or not nick_el:
+                continue
+
+            post_time = parse_dc_date(date_el.text)
+
+            if not post_time:
+                continue
+
+            # 기간 필터
+            if start <= post_time <= end:
+                page_has_valid = True
+
+                nickname = nick_el.text.strip()
+                uid = nickname  # MVP 단계
+
+                user_count[(nickname, uid)] += 1
+
+        # 페이지 단위 끌올 대응
+        if page_has_valid:
+            pages_without_hit = 0
+        else:
+            pages_without_hit += 1
+
+        if should_stop(pages_without_hit, MAX_EMPTY_PAGES):
+            break
+
+        page += 1
+
+    total = sum(user_count.values())
+
+    result = []
+    for i, ((nick, uid), cnt) in enumerate(
+        sorted(user_count.items(), key=lambda x: x[1], reverse=True),
+        1
+    ):
+        result.append({
+            "rank": i,
+            "nickname": nick,
+            "id": uid,
+            "count": cnt,
+            "share": round(cnt / total * 100, 2) if total else 0
+        })
 
     return result
 
 
-# ----------------------------
-# 3. ROUTES
-# ----------------------------
+# ---------------------------
+# 6. Flask Routes
+# ---------------------------
 @app.route("/")
 def index():
     return render_template("index.html")
 
 
 @app.route("/api/crawl", methods=["POST"])
-def crawl():
+def api_crawl():
     data = request.json
     url = data.get("url")
 
@@ -110,9 +212,9 @@ def crawl():
         return jsonify({"error": str(e)}), 400
 
 
-# ----------------------------
-# RUN (Render)
-# ----------------------------
+# ---------------------------
+# 7. Render Run
+# ---------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
