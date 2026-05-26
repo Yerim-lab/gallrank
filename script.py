@@ -14,36 +14,34 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
-# ---------------------------
-# 1. 시간 범위
-# ---------------------------
+# -----------------------
+# 시간 범위
+# -----------------------
 def get_time_range(days=7):
     now = datetime.now()
-    start = (now - timedelta(days=days)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    start = now - timedelta(days=days)
     return start, now
 
 
-# ---------------------------
-# 2. DC 날짜 파싱
-# ---------------------------
-def parse_dc_date(text):
+# -----------------------
+# DC 시간 파싱
+# -----------------------
+def parse_dc_date(text: str):
+    if not text:
+        return None
+
     text = text.strip()
     now = datetime.now()
 
     try:
-        # HH:MM (오늘)
-        if ":" in text:
+        if re.match(r"^\d{1,2}:\d{2}$", text):
             h, m = map(int, text.split(":"))
             return now.replace(hour=h, minute=m, second=0, microsecond=0)
 
-        # YYYY.MM.DD
-        if text.count(".") == 2:
+        if re.match(r"^\d{4}\.\d{1,2}\.\d{1,2}$", text):
             return datetime.strptime(text, "%Y.%m.%d")
 
-        # MM.DD
-        if text.count(".") == 1:
+        if re.match(r"^\d{1,2}\.\d{1,2}$", text):
             m, d = map(int, text.split("."))
             return datetime(now.year, m, d)
 
@@ -53,76 +51,48 @@ def parse_dc_date(text):
     return None
 
 
-# ---------------------------
-# 3. URL 정규화
-# ---------------------------
-def normalize_dc_url(url: str):
-    url = url.strip()
+# -----------------------
+# URL 정규화
+# -----------------------
+def normalize_url(url: str):
     parsed = urlparse(url)
     path = parsed.path
     qs = parse_qs(parsed.query)
 
     gid = qs.get("id", [None])[0]
 
-    gtype = "board"
-
-    if "/mini" in path:
-        gtype = "mini"
-        match = re.search(r"/mini/(?:board/lists/)?([^/?]+)", path)
-        if match and not gid:
-            gid = match.group(1)
-
-    elif "/mgallery" in path:
-        gtype = "mgallery"
+    if not gid:
         match = re.search(r"id=([^&/]+)", url)
-        if match and not gid:
-            gid = match.group(1)
-
-    else:
-        gtype = "board"
-        match = re.search(r"id=([^&/]+)", url)
-        if match and not gid:
+        if match:
             gid = match.group(1)
 
     if not gid:
-        raise ValueError("Invalid DCInside URL")
+        raise ValueError("Invalid URL")
 
-    if gtype == "board":
-        list_url = f"https://gall.dcinside.com/board/lists/?id={gid}"
-    elif gtype == "mgallery":
-        list_url = f"https://gall.dcinside.com/mgallery/board/lists?id={gid}"
+    if "/mgallery" in path:
+        base = "https://gall.dcinside.com/mgallery/board/lists?id="
+    elif "/mini" in path:
+        base = "https://gall.dcinside.com/mini/board/lists?id="
     else:
-        list_url = f"https://gall.dcinside.com/mini/board/lists?id={gid}"
+        base = "https://gall.dcinside.com/board/lists/?id="
 
-    return gtype, gid, list_url
-
-
-# ---------------------------
-# 4. 끌올 대응 종료 조건
-# ---------------------------
-def should_stop(pages_without_hit, threshold=2):
-    return pages_without_hit >= threshold
+    return base + gid
 
 
-# ---------------------------
-# 5. 크롤러 핵심
-# ---------------------------
-def crawl_gallery(url):
-    gtype, gid, list_url = normalize_dc_url(url)
+# -----------------------
+# 크롤러
+# -----------------------
+def crawl(url):
+    list_url = normalize_url(url)
 
     start, end = get_time_range(7)
 
     page = 1
+    MAX_PAGE = 200
+
     user_count = defaultdict(int)
 
-    pages_without_hit = 0
-    MAX_EMPTY_PAGES = 2
-    MAX_PAGE_LIMIT = 200
-
-    while True:
-        if page > MAX_PAGE_LIMIT:
-            break
-
+    while page <= MAX_PAGE:
         try:
             res = requests.get(f"{list_url}&page={page}", headers=HEADERS, timeout=5)
         except:
@@ -137,36 +107,33 @@ def crawl_gallery(url):
         if not rows:
             break
 
-        page_has_valid = False
+        found = False
 
         for row in rows:
+            # 공지/광고/설문 제외
+            num_el = row.select_one(".gall_num")
+            if num_el:
+                t = num_el.text.strip()
+                if t in ["공지", "AD", "설문"]:
+                    continue
+
             date_el = row.select_one(".gall_date")
             nick_el = row.select_one(".nickname")
 
             if not date_el or not nick_el:
                 continue
 
-            post_time = parse_dc_date(date_el.text)
-
-            if not post_time:
+            dt = parse_dc_date(date_el.text)
+            if not dt:
                 continue
 
-            # 기간 필터
-            if start <= post_time <= end:
-                page_has_valid = True
+            if start <= dt <= end:
+                found = True
+                nick = nick_el.text.strip()
+                user_count[nick] += 1
 
-                nickname = nick_el.text.strip()
-                uid = nickname  # MVP 단계
-
-                user_count[(nickname, uid)] += 1
-
-        # 페이지 단위 끌올 대응
-        if page_has_valid:
-            pages_without_hit = 0
-        else:
-            pages_without_hit += 1
-
-        if should_stop(pages_without_hit, MAX_EMPTY_PAGES):
+        # 완전 종료 조건 (과도한 페이지 탐색 방지)
+        if not found:
             break
 
         page += 1
@@ -174,14 +141,13 @@ def crawl_gallery(url):
     total = sum(user_count.values())
 
     result = []
-    for i, ((nick, uid), cnt) in enumerate(
+    for i, (nick, cnt) in enumerate(
         sorted(user_count.items(), key=lambda x: x[1], reverse=True),
         1
     ):
         result.append({
             "rank": i,
             "nickname": nick,
-            "id": uid,
             "count": cnt,
             "share": round(cnt / total * 100, 2) if total else 0
         })
@@ -189,9 +155,6 @@ def crawl_gallery(url):
     return result
 
 
-# ---------------------------
-# 6. Flask Routes
-# ---------------------------
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -199,22 +162,17 @@ def index():
 
 @app.route("/api/crawl", methods=["POST"])
 def api_crawl():
-    data = request.json
-    url = data.get("url")
+    url = request.json.get("url")
 
     if not url:
         return jsonify({"error": "no url"}), 400
 
     try:
-        result = crawl_gallery(url)
-        return jsonify(result)
+        return jsonify(crawl(url))
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
 
-# ---------------------------
-# 7. Render Run
-# ---------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
