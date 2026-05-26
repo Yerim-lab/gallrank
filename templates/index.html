@@ -3,46 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>갤창랭킹</title>
 
-    <link rel="icon" href="/static/favicon.png" type="image/png">
-    <link rel="stylesheet" href="/static/style.css?v=777">
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 
 <body>
 
 <div class="container">
 
-    <h1>갤창랭킹</h1>
+    <div class="header">
+        <h1>갤창랭킹</h1>
+        <p class="sub">디시인사이드 갤러리 글 작성 랭킹 분석</p>
+    </div>
 
-    <div class="search-bar">
+    <div class="search-box">
 
         <input
             id="urlInput"
             type="text"
-            placeholder="디시 갤러리 URL 입력"
+            placeholder="갤러리 URL 입력"
             autocomplete="off"
         />
 
-        <div class="divider"></div>
-
-        <button id="pasteBtn" type="button">
-            📋
-        </button>
-
-        <div class="divider"></div>
-
-        <button id="searchBtn" type="button">
-            🔍
-        </button>
+        <button id="pasteBtn">붙여넣기</button>
+        <button id="searchBtn">검색</button>
 
     </div>
+
+    <div id="status" class="status"></div>
 
     <div id="result"></div>
 
 </div>
 
-<script src="/static/app.js?v=888"></script>
+<script src="/static/app.js"></script>
 
 </body>
 </html>
