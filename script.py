@@ -2,7 +2,6 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from collections import Counter
-from datetime import datetime, timedelta
 
 HEADERS = {
     "User-Agent": (
@@ -74,39 +73,6 @@ def detect_gallery_type(user_url: str):
     return None, None
 
 
-def parse_post_date(row):
-    el = row.select_one(".gall_date")
-    if not el:
-        return None
-
-    t = el.get("title")
-    now = datetime.now()
-
-    if t:
-        try:
-            return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
-        except:
-            pass
-
-    txt = el.get_text(strip=True)
-
-    if re.match(r"^\d{1,2}:\d{2}$", txt):
-        h, m = map(int, txt.split(":"))
-        return now.replace(hour=h, minute=m, second=0, microsecond=0)
-
-    m = re.match(r"^(\d{1,2})\.(\d{1,2})$", txt)
-    if m:
-        mo, d = map(int, m.groups())
-        return datetime(now.year, mo, d)
-
-    m = re.match(r"^(\d{4})\.(\d{1,2})\.(\d{1,2})$", txt)
-    if m:
-        y, mo, d = map(int, m.groups())
-        return datetime(y, mo, d)
-
-    return None
-
-
 def is_filtered_row(row):
     classes = row.get("class") or []
 
@@ -151,11 +117,10 @@ def get_gallery_name(soup):
     return "갤러리"
 
 
-def crawl_base(base_url, cutoff, counter):
+def crawl_base(base_url, counter):
     page = 1
-    consecutive_old_pages = 0
 
-    while page <= 300:
+    while page <= 100:   # 🔥 핵심 변경: 최근 100페이지 고정
         url = f"{base_url}&page={page}"
 
         try:
@@ -172,30 +137,12 @@ def crawl_base(base_url, cutoff, counter):
         if not rows:
             break
 
-        page_has_new = False
-        page_old_count = 0
-
         for row in rows:
             if is_filtered_row(row):
                 continue
 
-            dt = parse_post_date(row)
-            if dt is None or dt >= cutoff:
-                page_has_new = True
-
-            if dt is None or dt >= cutoff:
-                nick = get_writer(row)
-                counter[nick] += 1
-            else:
-                page_old_count += 1
-
-        if page_has_new:
-            consecutive_old_pages = 0
-        else:
-            consecutive_old_pages += 1
-
-        if consecutive_old_pages >= 3:
-            break
+            nick = get_writer(row)
+            counter[nick] += 1
 
         page += 1
 
@@ -206,11 +153,6 @@ def crawl_gallery(user_url: str):
     if not base_url:
         raise Exception("갤러리 타입 판별 실패")
 
-    gid = extract_gid(user_url)
-
-    now = datetime.now()
-    cutoff = now - timedelta(days=7)
-
     counter = Counter()
 
     try:
@@ -218,9 +160,9 @@ def crawl_gallery(user_url: str):
         soup = BeautifulSoup(r.text, "lxml")
         gallery_name = get_gallery_name(soup)
     except:
-        gallery_name = gid
+        gallery_name = extract_gid(user_url)
 
-    crawl_base(base_url, cutoff, counter)
+    crawl_base(base_url, counter)
 
     total = sum(counter.values())
 
@@ -238,6 +180,6 @@ def crawl_gallery(user_url: str):
         "gallery": gallery_name,
         "type": gtype,
         "total": total,
-        "cutoff": cutoff.strftime("%Y-%m-%d %H:%M:%S"),
+        "pages": 100,
         "result": result
     }
