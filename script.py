@@ -56,9 +56,27 @@ def parse_datetime(text):
     return None
 
 
+def get_cutoff_datetime():
+
+    now = datetime.now()
+
+    seven_days_ago = now - timedelta(days=7)
+
+    cutoff = datetime(
+        year=seven_days_ago.year,
+        month=seven_days_ago.month,
+        day=seven_days_ago.day,
+        hour=0,
+        minute=0,
+        second=0
+    )
+
+    return cutoff
+
+
 def crawl(base_url):
 
-    cutoff = datetime.now() - timedelta(days=7)
+    cutoff = get_cutoff_datetime()
 
     counter = defaultdict(int)
 
@@ -119,20 +137,20 @@ def crawl(base_url):
             if not post_time:
                 continue
 
-            # 최근 7일 내 게시글만 집계
+            # 최근 7일 범위 집계
             if post_time >= cutoff:
 
                 counter[nick] += 1
 
                 found_recent_post = True
 
-        # 현재 페이지에 최근 글 없으면 종료
+        # 현재 페이지에 최근 글이 하나도 없으면 종료
         if not found_recent_post:
             break
 
         page += 1
 
-        # 과도한 요청 방지
+        # 서버 과부하 방지
         time.sleep(0.2)
 
     ranking = sorted(
