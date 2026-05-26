@@ -94,15 +94,31 @@ def get_writer(row):
     el = row.select_one(".gall_writer") or row.select_one(".ub-writer")
 
     if not el:
-        return "ㅇㅇ"
+        return "ㅇㅇ(unknown)"
 
-    return (
-        el.get("data-nick")
-        or el.get("data-user_nick")
-        or el.get("title")
-        or el.get_text(strip=True)
-        or "ㅇㅇ"
-    ).strip() or "ㅇㅇ"
+    uid = el.get("data-uid")
+    nick = el.get("data-nick")
+
+    # uid fallback
+    uid = uid.strip() if uid else None
+
+    # nick fallback (구조 대응)
+    if not nick:
+        inner = el.select_one(".nickname, a, span")
+        if inner:
+            nick = inner.get_text(strip=True)
+
+    nick = nick.strip() if nick else "ㅇㅇ"
+
+    # uid 없으면 IP/익명 처리
+    if not uid:
+        ip = el.get("data-ip")
+        if ip:
+            uid = f"ip_{ip}"
+        else:
+            uid = "unknown"
+
+    return f"{nick}({uid})"
 
 
 def get_gallery_name(soup):
@@ -120,7 +136,7 @@ def get_gallery_name(soup):
 def crawl_base(base_url, counter):
     page = 1
 
-    while page <= 100:   # 🔥 핵심 변경: 최근 100페이지 고정
+    while page <= 100:
         url = f"{base_url}&page={page}"
 
         try:
@@ -141,8 +157,8 @@ def crawl_base(base_url, counter):
             if is_filtered_row(row):
                 continue
 
-            nick = get_writer(row)
-            counter[nick] += 1
+            writer = get_writer(row)
+            counter[writer] += 1
 
         page += 1
 
@@ -169,11 +185,11 @@ def crawl_gallery(user_url: str):
     result = [
         {
             "rank": i,
-            "nickname": nick,
+            "user": user,          # nick(uid)
             "count": cnt,
             "share": round(cnt / total * 100, 2) if total else 0
         }
-        for i, (nick, cnt) in enumerate(counter.most_common(), 1)
+        for i, (user, cnt) in enumerate(counter.most_common(), 1)
     ]
 
     return {
