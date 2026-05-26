@@ -16,28 +16,39 @@ HEADERS = {
 
 
 # ---------------------------
-# gallery id 추출 (모바일/PC 통합)
+# URL 최종 리다이렉트 해석
+# ---------------------------
+def resolve_final_url(url: str):
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=10, allow_redirects=True)
+        return r.url, r.text
+    except:
+        return url, None
+
+
+# ---------------------------
+# gallery id 추출 (최종 URL 기준)
 # ---------------------------
 def extract_gallery_id(url: str):
     parsed = urlparse(url)
 
-    # 1) ?id=xxx (가장 정확)
     qs = parse_qs(parsed.query)
     if "id" in qs and qs["id"][0]:
         return qs["id"][0]
 
     path = parsed.path.strip("/")
 
-    # 2) /board/lists?id=xxx 같은 구조 보강
-    m = re.search(r"/board/lists/([a-zA-Z0-9_]+)", parsed.path)
-    if m:
-        return m.group(1)
+    # /board/lists?id=xxx fallback
+    if parsed.path:
+        m = re.search(r"[?&]id=([a-zA-Z0-9_]+)", url)
+        if m:
+            return m.group(1)
 
-    # 3) 루트형 (m.dcinside.com/krstock)
-    if re.match(r"^[a-zA-Z0-9_]+$", path):
+    # /krstock 같은 slug형
+    if path and "/" not in path:
         return path
 
-    # 4) 기존 구조 fallback
+    # /board/mgallery 구조
     m = re.search(r"/(?:board|mgallery|mini)/([a-zA-Z0-9_]+)", parsed.path)
     if m:
         return m.group(1)
@@ -46,47 +57,30 @@ def extract_gallery_id(url: str):
 
 
 # ---------------------------
-# base url 생성
+# base urls
 # ---------------------------
 def get_base_urls(gid: str):
     return [
-        f"https://gall.dcinside.com/board/lists/?id={gid}",
         f"https://gall.dcinside.com/mgallery/board/lists/?id={gid}",
+        f"https://gall.dcinside.com/board/lists/?id={gid}",
         f"https://gall.dcinside.com/mini/board/lists/?id={gid}",
     ]
 
 
 # ---------------------------
-# gallery name
-# ---------------------------
-def get_gallery_name(soup):
-    meta = soup.select_one('meta[name="title"]')
-    if not meta:
-        return "갤러리"
-
-    return meta.get("content", "").replace(
-        " - 커뮤니티 포털 디시인사이드", ""
-    ).strip()
-
-
-# ---------------------------
-# 필터 (공지/설문/AD 제거)
+# 필터
 # ---------------------------
 def is_filtered_row(row):
     if "notice" in (row.get("class") or []):
         return True
 
     num = row.select_one(".gall_num")
-    if num:
-        t = num.get_text(strip=True)
-        if t in ["공지", "설문", "AD", "광고"]:
-            return True
+    if num and num.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
+        return True
 
     subject = row.select_one(".gall_subject")
-    if subject:
-        t = subject.get_text(strip=True)
-        if t in ["공지", "설문", "AD", "광고"]:
-            return True
+    if subject and subject.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
+        return True
 
     return False
 
@@ -127,7 +121,7 @@ def parse_post_date(row):
 
 
 # ---------------------------
-# 페이지 크롤링
+# 크롤링
 # ---------------------------
 def crawl_base(base_url, cutoff, counter):
     page = 1
@@ -154,7 +148,7 @@ def crawl_base(base_url, cutoff, counter):
 
             post_date = parse_post_date(row)
             if not post_date:
-                continue  # 핵심 수정: 날짜 없는 글 제외
+                continue
 
             if post_date < cutoff:
                 continue
@@ -169,9 +163,6 @@ def crawl_base(base_url, cutoff, counter):
             else:
                 nickname = "ㅇㅇ"
 
-            if not nickname:
-                nickname = "ㅇㅇ"
-
             counter[nickname] += 1
 
         page += 1
@@ -181,33 +172,32 @@ def crawl_base(base_url, cutoff, counter):
 # main
 # ---------------------------
 def crawl_gallery(user_url: str):
-    gid = extract_gallery_id(user_url)
+    final_url, html = resolve_final_url(user_url)
+
+    gid = extract_gallery_id(final_url)
     if not gid:
-        raise ValueError("갤러리 ID 추출 실패 (URL 확인 필요)")
+        raise ValueError("갤러리 ID 추출 실패 (리다이렉트 후 URL 확인 필요)")
 
     now = datetime.now()
     cutoff = now - timedelta(days=7)
 
     counter = Counter()
-    gallery_name = gid
 
+    # base urls
     base_urls = get_base_urls(gid)
 
+    # gallery name (최종 HTML에서 추출)
+    gallery_name = gid
+    if html:
+        soup = BeautifulSoup(html, "lxml")
+        meta = soup.select_one('meta[name="title"]')
+        if meta:
+            gallery_name = meta.get("content", "").replace(
+                " - 커뮤니티 포털 디시인사이드", ""
+            ).strip() or gid
+
     for base_url in base_urls:
-        try:
-            r = requests.get(base_url, headers=HEADERS, timeout=10)
-            if r.status_code != 200:
-                continue
-
-            soup = BeautifulSoup(r.text, "lxml")
-
-            if gallery_name == gid:
-                gallery_name = get_gallery_name(soup)
-
-            crawl_base(base_url, cutoff, counter)
-
-        except:
-            continue
+        crawl_base(base_url, cutoff, counter)
 
     total = sum(counter.values())
 
@@ -216,14 +206,12 @@ def crawl_gallery(user_url: str):
 
     for nickname, count in counter.most_common():
         share = round((count / total) * 100, 2) if total else 0
-
         result.append({
             "rank": rank,
             "nickname": nickname,
             "count": count,
             "share": share
         })
-
         rank += 1
 
     return {
