@@ -27,24 +27,23 @@ def extract_gallery_info(url: str):
     if not url.startswith("http"):
         url = "https://" + url
 
-    # mini (확정)
     if "/mini/" in url:
         m = re.search(r"id=([a-zA-Z0-9_]+)|/mini/([a-zA-Z0-9_]+)", url)
         gid = m.group(1) or m.group(2) if m else None
         return gid, "mini"
 
-    # mgallery (확정)
     if "/mgallery/" in url:
         m = re.search(r"id=([a-zA-Z0-9_]+)", url)
         return (m.group(1), "mgallery") if m else (None, None)
 
-    # board (확정)
     if "/board/" in url:
         m = re.search(r"id=([a-zA-Z0-9_]+)", url)
         return (m.group(1), "board") if m else (None, None)
 
-    # 모바일 / 루트 / 단축형 (애매)
-    m = re.search(r"m\.dcinside\.com/([a-zA-Z0-9_]+)$|gall\.dcinside\.com/([a-zA-Z0-9_]+)$", url)
+    m = re.search(
+        r"m\.dcinside\.com/([a-zA-Z0-9_]+)$|gall\.dcinside\.com/([a-zA-Z0-9_]+)$",
+        url
+    )
     if m:
         gid = m.group(1) or m.group(2)
         return gid, None
@@ -56,15 +55,12 @@ def extract_gallery_info(url: str):
 # 갤러리 타입 판별
 # ---------------------------
 def detect_gallery_type(gid: str, hint=None):
-    # 1. mini는 확정
     if hint == "mini":
         return "mini", BASE["mini"].format(gid=gid)
 
-    # 2. hint 확정
     if hint in ["mgallery", "board"]:
         return hint, BASE[hint].format(gid=gid)
 
-    # 3. fallback probe
     for t in ["mgallery", "board"]:
         url = BASE[t].format(gid=gid)
 
@@ -152,7 +148,7 @@ def parse_post_date(row):
 
 
 # ---------------------------
-# 크롤링
+# 크롤링 (수정 핵심)
 # ---------------------------
 def crawl_base(base_url, cutoff, counter):
     page = 1
@@ -174,30 +170,34 @@ def crawl_base(base_url, cutoff, counter):
         if not rows:
             break
 
-        stop = False
+        page_has_in_range = False
 
         for row in rows:
             if is_filtered_row(row):
                 continue
 
             dt = parse_post_date(row)
-            if dt and dt < cutoff:
-                stop = True
-                continue
 
-            writer = row.select_one(".gall_writer") or row.select_one(".ub-writer")
+            # 날짜 없는 글은 끌올/비정상 케이스 → 집계만 제외, 종료에는 영향 없음
+            in_range = True if dt is None else (dt >= cutoff)
 
-            nick = "ㅇㅇ"
-            if writer:
-                nick = (
-                    writer.get("data-nick")
-                    or writer.get_text(strip=True)
-                    or "ㅇㅇ"
-                ).strip() or "ㅇㅇ"
+            if in_range:
+                page_has_in_range = True
 
-            counter[nick] += 1
+                writer = row.select_one(".gall_writer") or row.select_one(".ub-writer")
 
-        if stop:
+                nick = "ㅇㅇ"
+                if writer:
+                    nick = (
+                        writer.get("data-nick")
+                        or writer.get_text(strip=True)
+                        or "ㅇㅇ"
+                    ).strip() or "ㅇㅇ"
+
+                counter[nick] += 1
+
+        # 페이지 전체가 범위 밖이면 종료
+        if not page_has_in_range:
             break
 
         page += 1
