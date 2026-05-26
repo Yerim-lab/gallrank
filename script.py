@@ -5,7 +5,6 @@ from collections import Counter
 from datetime import datetime, timedelta
 from urllib.parse import urlparse, parse_qs
 
-
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -16,9 +15,9 @@ HEADERS = {
 
 
 # ---------------------------
-# URL 정규화 + 갤러리 ID 추출
+# URL 정규화 (핵심)
 # ---------------------------
-def normalize_url(url: str):
+def normalize_input_url(url: str):
     if not url.startswith("http"):
         url = "https://" + url
 
@@ -26,18 +25,21 @@ def normalize_url(url: str):
     return url
 
 
+# ---------------------------
+# 갤러리 ID 추출
+# ---------------------------
 def extract_gallery_id(url: str):
-    url = normalize_url(url)
+    url = normalize_input_url(url)
 
-    # query param
     q = parse_qs(urlparse(url).query)
     if "id" in q:
         return q["id"][0]
 
-    # path patterns
     patterns = [
-        r"gall\.dcinside\.com/(?:board|mgallery|mini)/lists/\?id=([a-zA-Z0-9_]+)",
-        r"gall\.dcinside\.com/(?:board|mgallery|mini)/([a-zA-Z0-9_]+)",
+        r"id=([a-zA-Z0-9_]+)",
+        r"/board/([a-zA-Z0-9_]+)",
+        r"/mgallery/board/([a-zA-Z0-9_]+)",
+        r"/mini/board/([a-zA-Z0-9_]+)",
         r"gall\.dcinside\.com/([a-zA-Z0-9_]+)$",
     ]
 
@@ -50,19 +52,27 @@ def extract_gallery_id(url: str):
 
 
 # ---------------------------
-# 갤러리 타입 강제 판별 (핵심 수정)
+# 갤러리 타입 판별 (핵심)
 # ---------------------------
 def detect_board_type(url: str):
-    url = normalize_url(url)
+    url = normalize_input_url(url)
 
-    if "/mini/" in url:
+    # mini가 최우선
+    if "mini" in url:
         return "mini"
-    if "/mgallery/" in url:
+
+    # mgallery 명시
+    if "mgallery" in url:
         return "mgallery"
+
+    # 기본은 board
     return "board"
 
 
-def get_base_url(gid: str, board_type: str):
+# ---------------------------
+# PC 리스트 URL 생성 (핵심)
+# ---------------------------
+def build_list_url(gid: str, board_type: str):
     return f"https://gall.dcinside.com/{board_type}/board/lists/?id={gid}"
 
 
@@ -74,62 +84,31 @@ def get_gallery_name(soup):
     if not meta:
         return "갤러리"
 
-    title = meta.get("content", "")
-    return title.replace(" - 커뮤니티 포털 디시인사이드", "").strip()
+    return meta.get("content", "").replace(
+        " - 커뮤니티 포털 디시인사이드", ""
+    ).strip()
 
 
 # ---------------------------
-# 필터
+# 필터 (공지/설문/AD 제거)
 # ---------------------------
-def is_filtered_row(row):
+def is_filtered(row):
     cls = row.get("class") or []
     if "notice" in cls:
         return True
 
-    subject = row.select_one(".gall_subject")
-    if subject:
-        t = subject.get_text(strip=True)
-        if t in ["공지", "설문", "AD", "광고"]:
-            return True
-
-    num = row.select_one(".gall_num")
-    if num:
-        t = num.get_text(strip=True)
-        if t in ["공지", "설문", "AD", "광고"]:
-            return True
+    for sel in [".gall_subject", ".gall_num"]:
+        el = row.select_one(sel)
+        if el:
+            t = el.get_text(strip=True)
+            if t in ["공지", "설문", "AD", "광고"]:
+                return True
 
     return False
 
 
 # ---------------------------
-# 날짜 파싱 (없으면 None 허용)
-# ---------------------------
-def parse_post_date(row):
-    el = row.select_one(".gall_date")
-    if not el:
-        return None
-
-    t = el.get("title") or el.get_text(strip=True)
-    now = datetime.now()
-
-    try:
-        return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
-    except:
-        pass
-
-    if re.match(r"^\d{1,2}:\d{2}$", t):
-        h, m = map(int, t.split(":"))
-        return now.replace(hour=h, minute=m, second=0, microsecond=0)
-
-    if re.match(r"^\d{1,2}\.\d{1,2}$", t):
-        mo, d = map(int, t.split("."))
-        return datetime(now.year, mo, d)
-
-    return None
-
-
-# ---------------------------
-# writer 파싱 (핵심 개선)
+# 작성자 파싱 (강화)
 # ---------------------------
 def parse_writer(row):
     w = row.select_one(".gall_writer") or row.select_one(".ub-writer")
@@ -144,16 +123,40 @@ def parse_writer(row):
         or "ㅇㅇ"
     ).strip()
 
-    if not nick:
-        return "ㅇㅇ"
-
-    return nick
+    return nick if nick else "ㅇㅇ"
 
 
 # ---------------------------
-# 크롤링
+# 날짜 파싱 (있으면 참고만)
 # ---------------------------
-def crawl_base(base_url, cutoff, counter):
+def parse_date(row):
+    d = row.select_one(".gall_date")
+    if not d:
+        return None
+
+    t = d.get("title") or d.get_text(strip=True)
+    now = datetime.now()
+
+    try:
+        return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
+    except:
+        pass
+
+    if re.match(r"^\d{1,2}:\d{2}$", t):
+        h, m = map(int, t.split(":"))
+        return now.replace(hour=h, minute=m, second=0, microsecond=0)
+
+    if re.match(r"^\d{1,2}\.\d{1,2}$", t):
+        mo, da = map(int, t.split("."))
+        return datetime(now.year, mo, da)
+
+    return None
+
+
+# ---------------------------
+# 크롤링 (과소집계 방지 구조)
+# ---------------------------
+def crawl(base_url, cutoff, counter):
     page = 1
     max_page = 200
 
@@ -177,43 +180,42 @@ def crawl_base(base_url, cutoff, counter):
         if not rows:
             break
 
-        empty_count = 0
+        valid_rows = 0
 
         for row in rows:
-            if is_filtered_row(row):
+            if is_filtered(row):
                 continue
 
             writer = parse_writer(row)
             counter[writer] += 1
+            valid_rows += 1
 
-            # cutoff는 "중단"이 아니라 그냥 참고만
-            dt = parse_post_date(row)
-            if dt and dt < cutoff:
-                empty_count += 1
-
-        # 너무 오래된 페이지만 있으면 종료
-        if empty_count > len(rows) * 0.7:
+        # 안전 종료 조건 (너무 약하게 잡음 → 과소집계 방지)
+        if valid_rows == 0:
             break
 
         page += 1
 
 
 # ---------------------------
-# main
+# 메인 함수
 # ---------------------------
-def crawl_gallery(user_url: str):
-    user_url = normalize_url(user_url)
+def crawl_gallery(url: str):
+    url = normalize_input_url(url)
 
-    gid = extract_gallery_id(user_url)
+    gid = extract_gallery_id(url)
     if not gid:
         raise Exception("갤러리 ID 추출 실패")
 
-    board_type = detect_board_type(user_url)
+    board_type = detect_board_type(url)
+    base_url = build_list_url(gid, board_type)
 
     now = datetime.now()
-    cutoff = now - timedelta(days=7)
 
-    base_url = get_base_url(gid, board_type)
+    # 사용자가 요구한 "7일 전 00시 기준"
+    cutoff = (now - timedelta(days=7)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
 
     counter = Counter()
 
@@ -224,7 +226,7 @@ def crawl_gallery(user_url: str):
     except:
         gallery_name = gid
 
-    crawl_base(base_url, cutoff, counter)
+    crawl(base_url, cutoff, counter)
 
     total = sum(counter.values())
 
