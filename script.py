@@ -14,15 +14,29 @@ HEADERS = {
 
 
 def extract_gallery_id(url: str):
-    match = re.search(r"id=([a-zA-Z0-9_]+)", url)
+    """
+    dcinside 모바일/PC 모든 형태 대응
+    """
+
+    # 1) id=gid (구형 / 일부 mgallery)
+    match = re.search(r"[?&]id=([a-zA-Z0-9_]+)", url)
     if match:
         return match.group(1)
 
-    match = re.search(r"dcinside\.com/([a-zA-Z0-9_]+)", url)
+    # 2) m.dcinside.com/board/{gid}
+    match = re.search(r"m\.dcinside\.com/(?:board|mgallery|mini)/([a-zA-Z0-9_]+)", url)
     if match:
-        gid = match.group(1)
-        if gid not in ["board", "mgallery", "mini"]:
-            return gid
+        return match.group(1)
+
+    # 3) gall.dcinside.com/board/{gid}
+    match = re.search(r"gall\.dcinside\.com/(?:board|mgallery|mini)/lists/\?id=([a-zA-Z0-9_]+)", url)
+    if match:
+        return match.group(1)
+
+    # 4) fallback: path 기반
+    match = re.search(r"dcinside\.com/(?:board|mgallery|mini)/([a-zA-Z0-9_]+)", url)
+    if match:
+        return match.group(1)
 
     return None
 
@@ -65,25 +79,25 @@ def get_gallery_name(soup: BeautifulSoup):
 
 def is_filtered_row(row) -> bool:
     """
-    공지 / 설문 / AD 필터링 (핵심 로직)
+    공지 / 설문 / AD 필터링
     """
 
-    # 1차: row class 기반
-    if "notice" in row.get("class", []):
+    # class 기반
+    if "notice" in (row.get("class") or []):
         return True
 
-    # 2차: gall_num 기준 (핵심)
+    # gall_num 기반
     num = row.select_one(".gall_num")
     if num:
-        text = num.get_text(strip=True).upper()
-        if text in ["공지", "설문", "AD"]:
+        text = num.get_text(strip=True)
+        if text in ["공지", "설문", "AD", "광고"]:
             return True
 
-    # 3차: subject fallback
+    # subject fallback
     subject = row.select_one(".gall_subject")
     if subject:
         text = subject.get_text(strip=True)
-        if text in ["공지", "설문", "AD"]:
+        if text in ["공지", "설문", "AD", "광고"]:
             return True
 
     return False
@@ -102,7 +116,6 @@ def crawl_gallery(user_url: str):
 
     counter = Counter()
     gallery_name = gid
-
     page = 1
 
     while True:
@@ -129,13 +142,10 @@ def crawl_gallery(user_url: str):
         valid_count = 0
 
         for row in rows:
-
-            # 핵심 필터 적용
             if is_filtered_row(row):
                 continue
 
             writer = row.select_one(".gall_writer")
-
             if not writer:
                 continue
 
