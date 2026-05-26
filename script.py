@@ -15,28 +15,27 @@ HEADERS = {
 
 
 # ---------------------------
-# URL → gallery id
+# gallery id 추출
 # ---------------------------
 def extract_gallery_id(url: str):
-    match = re.search(r"[?&]id=([a-zA-Z0-9_]+)", url)
-    if match:
-        return match.group(1)
+    patterns = [
+        r"[?&]id=([a-zA-Z0-9_]+)",
+        r"m\.dcinside\.com/(?:board|mgallery|mini)/([a-zA-Z0-9_]+)",
+        r"dcinside\.com/(?:board|mgallery|mini)/([a-zA-Z0-9_]+)",
+    ]
 
-    match = re.search(r"m\.dcinside\.com/(?:board|mgallery|mini)/([a-zA-Z0-9_]+)", url)
-    if match:
-        return match.group(1)
-
-    match = re.search(r"dcinside\.com/(?:board|mgallery|mini)/([a-zA-Z0-9_]+)", url)
-    if match:
-        return match.group(1)
+    for p in patterns:
+        m = re.search(p, url)
+        if m:
+            return m.group(1)
 
     return None
 
 
 # ---------------------------
-# base url 찾기
+# 3개 타입 전부 크롤링
 # ---------------------------
-def build_candidate_urls(gid: str):
+def get_base_urls(gid: str):
     return [
         f"https://gall.dcinside.com/board/lists/?id={gid}",
         f"https://gall.dcinside.com/mgallery/board/lists/?id={gid}",
@@ -44,38 +43,23 @@ def build_candidate_urls(gid: str):
     ]
 
 
-def find_working_url(gid: str):
-    for url in build_candidate_urls(gid):
-        try:
-            r = requests.get(url, headers=HEADERS, timeout=10)
-            if r.status_code != 200:
-                continue
-
-            soup = BeautifulSoup(r.text, "lxml")
-            if soup.select_one("tr.ub-content"):
-                return url
-        except:
-            continue
-
-    return None
-
-
 # ---------------------------
 # gallery name
 # ---------------------------
-def get_gallery_name(soup: BeautifulSoup):
+def get_gallery_name(soup):
     meta = soup.select_one('meta[name="title"]')
     if not meta:
         return "갤러리"
 
-    title = meta.get("content", "")
-    return title.replace(" - 커뮤니티 포털 디시인사이드", "").strip()
+    return meta.get("content", "").replace(
+        " - 커뮤니티 포털 디시인사이드", ""
+    ).strip()
 
 
 # ---------------------------
-# row filter
+# 필터
 # ---------------------------
-def is_filtered_row(row) -> bool:
+def is_filtered_row(row):
     if "notice" in (row.get("class") or []):
         return True
 
@@ -91,7 +75,7 @@ def is_filtered_row(row) -> bool:
 
 
 # ---------------------------
-# 날짜 파싱 (핵심 수정)
+# 날짜 파싱 (title 우선)
 # ---------------------------
 def parse_post_date(row):
     date_el = row.select_one(".gall_date")
@@ -99,29 +83,23 @@ def parse_post_date(row):
         return None
 
     title = date_el.get("title")
-
-    # 1) 최우선: title (정확)
     if title:
         try:
             return datetime.strptime(title, "%Y-%m-%d %H:%M:%S")
         except:
             pass
 
-    # 2) fallback (비정상 케이스)
     text = date_el.get_text(strip=True)
     now = datetime.now()
 
     if re.match(r"^\d{1,2}:\d{2}$", text):
-        try:
-            h, m = map(int, text.split(":"))
-            return now.replace(hour=h, minute=m, second=0, microsecond=0)
-        except:
-            return None
+        h, m = map(int, text.split(":"))
+        return now.replace(hour=h, minute=m, second=0, microsecond=0)
 
     m = re.match(r"^(\d{1,2})\.(\d{1,2})$", text)
     if m:
-        month, day = map(int, m.groups())
-        return datetime(now.year, month, day)
+        mo, d = map(int, m.groups())
+        return datetime(now.year, mo, d)
 
     m = re.match(r"^(\d{4})\.(\d{1,2})\.(\d{1,2})$", text)
     if m:
@@ -132,25 +110,11 @@ def parse_post_date(row):
 
 
 # ---------------------------
-# main crawler
+# 페이지 크롤링
 # ---------------------------
-def crawl_gallery(user_url: str):
-    gid = extract_gallery_id(user_url)
-    if not gid:
-        raise Exception("갤러리 ID를 찾을 수 없음")
-
-    base_url = find_working_url(gid)
-    if not base_url:
-        raise Exception("갤러리를 찾을 수 없음")
-
-    now = datetime.now()
-
-    # 정확히 7일 범위 (오늘 포함 기준 컷)
-    cutoff = (now - timedelta(days=7)).replace(hour=23, minute=59, second=59, microsecond=0)
-
-    counter = Counter()
+def crawl_base(base_url, cutoff, counter, now):
     page = 1
-    gallery_name = gid
+    stop = False
 
     while True:
         url = f"{base_url}&page={page}"
@@ -165,10 +129,6 @@ def crawl_gallery(user_url: str):
 
         soup = BeautifulSoup(r.text, "lxml")
 
-        if page == 1:
-            gallery_name = get_gallery_name(soup)
-
-        # fallback selector (중요)
         rows = soup.select("tr.ub-content")
         if not rows:
             rows = soup.select("tr")
@@ -176,15 +136,12 @@ def crawl_gallery(user_url: str):
         if not rows:
             break
 
-        stop = False
-
         for row in rows:
             if is_filtered_row(row):
                 continue
 
             post_date = parse_post_date(row)
 
-            # 날짜가 있고 cutoff 이전이면 종료 신호
             if post_date and post_date < cutoff:
                 stop = True
                 continue
@@ -212,6 +169,41 @@ def crawl_gallery(user_url: str):
 
         if page > 100:
             break
+
+
+# ---------------------------
+# main
+# ---------------------------
+def crawl_gallery(user_url: str):
+    gid = extract_gallery_id(user_url)
+    if not gid:
+        raise Exception("갤러리 ID를 찾을 수 없음")
+
+    now = datetime.now()
+    cutoff = (now - timedelta(days=7)).replace(
+        hour=23, minute=59, second=59, microsecond=0
+    )
+
+    counter = Counter()
+    gallery_name = gid
+
+    base_urls = get_base_urls(gid)
+
+    for base_url in base_urls:
+        try:
+            r = requests.get(base_url, headers=HEADERS, timeout=10)
+            if r.status_code != 200:
+                continue
+
+            soup = BeautifulSoup(r.text, "lxml")
+
+            if gallery_name == gid:
+                gallery_name = get_gallery_name(soup)
+
+            crawl_base(base_url, cutoff, counter, now)
+
+        except:
+            continue
 
     total = sum(counter.values())
 
