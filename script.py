@@ -20,7 +20,7 @@ BASE = {
 
 
 # ---------------------------
-# URL → ID 추출 (축약 포함)
+# URL 정규화 + ID 추출
 # ---------------------------
 def extract_gallery_id(url: str):
     url = url.strip()
@@ -43,10 +43,35 @@ def extract_gallery_id(url: str):
 
 
 # ---------------------------
-# 갤러리 타입 자동 탐색 (핵심)
+# URL에서 타입 강제 추출 (핵심)
 # ---------------------------
-def detect_gallery_type(gid: str):
+def extract_type_from_url(url: str):
+    url = url.lower()
+
+    if "/mini/" in url:
+        return "mini"
+    if "/mgallery/" in url:
+        return "mgallery"
+    if "/board/" in url:
+        return "board"
+
+    return None
+
+
+# ---------------------------
+# 갤러리 타입 결정 (강제 > fallback)
+# ---------------------------
+def detect_gallery_type(gid: str, forced_type=None):
+    order = []
+
+    if forced_type:
+        order.append(forced_type)
+
     for t in ["mgallery", "board", "mini"]:
+        if t not in order:
+            order.append(t)
+
+    for t in order:
         url = BASE[t].format(gid=gid)
 
         try:
@@ -67,14 +92,13 @@ def detect_gallery_type(gid: str):
 
 
 # ---------------------------
-# 갤러리 이름 추출 (정확 버전)
+# 갤러리 이름 추출
 # ---------------------------
 def get_gallery_name(soup):
     meta = soup.select_one('meta[name="title"]')
 
     if meta:
-        content = meta.get("content", "")
-        return content.split(" - ")[0].strip()
+        return meta.get("content", "").split(" - ")[0].strip()
 
     h1 = soup.select_one("h1")
     if h1:
@@ -84,7 +108,7 @@ def get_gallery_name(soup):
 
 
 # ---------------------------
-# 필터 (공지 / 설문 / 광고 제거)
+# 필터링 (공지/광고 제거)
 # ---------------------------
 def is_filtered_row(row):
     if "notice" in (row.get("class") or []):
@@ -109,10 +133,10 @@ def parse_post_date(row):
     if not el:
         return None
 
-    t = el.get("title")
-    if t:
+    title = el.get("title")
+    if title:
         try:
-            return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
+            return datetime.strptime(title, "%Y-%m-%d %H:%M:%S")
         except:
             pass
 
@@ -194,7 +218,7 @@ def crawl_base(base_url, cutoff, counter):
 
 
 # ---------------------------
-# 메인
+# 메인 함수
 # ---------------------------
 def crawl_gallery(user_url: str):
     gid = extract_gallery_id(user_url)
@@ -210,11 +234,14 @@ def crawl_gallery(user_url: str):
 
     counter = Counter()
 
-    gtype, base_url = detect_gallery_type(gid)
+    forced_type = extract_type_from_url(user_url)
+
+    gtype, base_url = detect_gallery_type(gid, forced_type)
+
     if not base_url:
         raise Exception("갤러리 타입 판별 실패")
 
-    # 이름은 확정된 URL 기준으로 재조회
+    # 확정 URL 기준 이름 추출
     try:
         r = requests.get(base_url, headers=HEADERS, timeout=10)
         soup = BeautifulSoup(r.text, "lxml")
