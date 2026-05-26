@@ -20,12 +20,25 @@ BASE = {
 
 
 # ---------------------------
-# URL → gid + hint
+# URL 리다이렉트 해결
 # ---------------------------
-def extract_gallery_info(url: str):
+def resolve_url(url: str):
     url = url.strip()
     if not url.startswith("http"):
         url = "https://" + url
+
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=10, allow_redirects=True)
+        return r.url
+    except:
+        return url
+
+
+# ---------------------------
+# gid 추출 (최종 URL 기준)
+# ---------------------------
+def extract_gallery_info(url: str):
+    url = resolve_url(url)
 
     # mini
     if "/mini/" in url:
@@ -45,7 +58,7 @@ def extract_gallery_info(url: str):
         if m:
             return m.group(1), "board"
 
-    # fallback
+    # fallback (query 없을 수도 있음 → path에서 추출 시도)
     m = re.search(r"id=([a-zA-Z0-9_]+)", url)
     if m:
         return m.group(1), None
@@ -54,16 +67,14 @@ def extract_gallery_info(url: str):
 
 
 # ---------------------------
-# 갤러리 타입 판별 (강화 버전)
+# 갤러리 타입 판별
 # ---------------------------
 def detect_gallery_type(gid: str, hint=None):
     candidates = []
 
-    # hint 우선
     if hint in BASE:
         candidates.append(hint)
 
-    # 전체 fallback 순서
     for t in ["mini", "mgallery", "board"]:
         if t not in candidates:
             candidates.append(t)
@@ -80,11 +91,8 @@ def detect_gallery_type(gid: str, hint=None):
             continue
 
         soup = BeautifulSoup(r.text, "lxml")
-
-        # DCInside list 핵심 구조
         rows = soup.select("tr.ub-content")
 
-        # mini는 종종 구조 다름 → fallback
         if not rows:
             rows = soup.select("tr")
 
@@ -137,6 +145,8 @@ def parse_post_date(row):
         return None
 
     t = el.get("title")
+    now = datetime.now()
+
     if t:
         try:
             return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
@@ -144,7 +154,6 @@ def parse_post_date(row):
             pass
 
     txt = el.get_text(strip=True)
-    now = datetime.now()
 
     if re.match(r"^\d{1,2}:\d{2}$", txt):
         h, m = map(int, txt.split(":"))
