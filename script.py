@@ -80,38 +80,37 @@ def is_filtered_row(row) -> bool:
         return True
 
     num = row.select_one(".gall_num")
-    if num:
-        if num.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
-            return True
+    if num and num.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
+        return True
 
     subject = row.select_one(".gall_subject")
-    if subject:
-        if subject.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
-            return True
+    if subject and subject.get_text(strip=True) in ["공지", "설문", "AD", "광고"]:
+        return True
 
     return False
 
 
 # ---------------------------
-# 날짜 파싱 (DCInside 대응)
+# 날짜 파싱 (핵심 수정)
 # ---------------------------
-def parse_post_date(row, base_datetime: datetime):
-    """
-    DCInside 날짜 형식:
-    - 05.26
-    - 2026.05.26
-    - 12:34 (오늘)
-    """
-
+def parse_post_date(row):
     date_el = row.select_one(".gall_date")
     if not date_el:
         return None
 
+    title = date_el.get("title")
+
+    # 1) 최우선: title (정확)
+    if title:
+        try:
+            return datetime.strptime(title, "%Y-%m-%d %H:%M:%S")
+        except:
+            pass
+
+    # 2) fallback (비정상 케이스)
     text = date_el.get_text(strip=True)
+    now = datetime.now()
 
-    now = base_datetime
-
-    # 시간형 (오늘)
     if re.match(r"^\d{1,2}:\d{2}$", text):
         try:
             h, m = map(int, text.split(":"))
@@ -119,18 +118,15 @@ def parse_post_date(row, base_datetime: datetime):
         except:
             return None
 
-    # MM.DD
     m = re.match(r"^(\d{1,2})\.(\d{1,2})$", text)
     if m:
         month, day = map(int, m.groups())
-        year = now.year
-        return datetime(year, month, day)
+        return datetime(now.year, month, day)
 
-    # YYYY.MM.DD
     m = re.match(r"^(\d{4})\.(\d{1,2})\.(\d{1,2})$", text)
     if m:
-        y, mth, d = map(int, m.groups())
-        return datetime(y, mth, d)
+        y, mo, d = map(int, m.groups())
+        return datetime(y, mo, d)
 
     return None
 
@@ -147,10 +143,9 @@ def crawl_gallery(user_url: str):
     if not base_url:
         raise Exception("갤러리를 찾을 수 없음")
 
-    # ---------------------------
-    # cutoff: 오늘 기준 7일 전 23:59:59
-    # ---------------------------
     now = datetime.now()
+
+    # 정확히 7일 범위 (오늘 포함 기준 컷)
     cutoff = (now - timedelta(days=7)).replace(hour=23, minute=59, second=59, microsecond=0)
 
     counter = Counter()
@@ -173,7 +168,11 @@ def crawl_gallery(user_url: str):
         if page == 1:
             gallery_name = get_gallery_name(soup)
 
+        # fallback selector (중요)
         rows = soup.select("tr.ub-content")
+        if not rows:
+            rows = soup.select("tr")
+
         if not rows:
             break
 
@@ -183,20 +182,23 @@ def crawl_gallery(user_url: str):
             if is_filtered_row(row):
                 continue
 
-            post_date = parse_post_date(row, now)
+            post_date = parse_post_date(row)
+
+            # 날짜가 있고 cutoff 이전이면 종료 신호
             if post_date and post_date < cutoff:
                 stop = True
                 continue
 
-            writer = row.select_one(".gall_writer")
-            if not writer:
-                continue
+            writer = row.select_one(".gall_writer") or row.select_one(".ub-writer")
 
-            nickname = (
-                writer.get("data-nick")
-                or writer.get_text(strip=True)
-                or "ㅇㅇ"
-            ).strip()
+            if writer:
+                nickname = (
+                    writer.get("data-nick")
+                    or writer.get_text(strip=True)
+                    or "ㅇㅇ"
+                ).strip()
+            else:
+                nickname = "ㅇㅇ"
 
             if not nickname:
                 nickname = "ㅇㅇ"
@@ -208,7 +210,7 @@ def crawl_gallery(user_url: str):
 
         page += 1
 
-        if page > 50:
+        if page > 100:
             break
 
     total = sum(counter.values())
