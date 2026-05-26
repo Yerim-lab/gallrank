@@ -1,21 +1,30 @@
 ﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
+
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
     <title>갤창랭킹</title>
 
     <link
         rel="stylesheet"
-        href="{{ url_for('static', filename='style.css') }}?v=7"
+        href="{{ url_for('static', filename='style.css') }}?v=10"
     >
+
 </head>
 
 <body>
 
 <div class="wrapper">
 
-    <h1 class="title">갤창랭킹</h1>
+    <h1 class="title">
+        갤창랭킹
+    </h1>
 
     <div class="search-box">
 
@@ -33,7 +42,29 @@
             class="icon-btn"
             type="button"
         >
-            📋
+
+            <svg
+                class="icon-svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            >
+                <rect
+                    x="9"
+                    y="9"
+                    width="13"
+                    height="13"
+                    rx="2"
+                ></rect>
+
+                <path
+                    d="M5 15V5a2 2 0 0 1 2-2h10"
+                ></path>
+            </svg>
+
         </button>
 
         <button
@@ -46,7 +77,30 @@
                 class="icon"
                 id="searchIcon"
             >
-                🔍
+
+                <svg
+                    class="icon-svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <circle
+                        cx="11"
+                        cy="11"
+                        r="7"
+                    ></circle>
+
+                    <line
+                        x1="16.65"
+                        y1="16.65"
+                        x2="21"
+                        y2="21"
+                    ></line>
+                </svg>
+
             </span>
 
             <div
@@ -67,7 +121,7 @@
 </div>
 
 <script
-    src="{{ url_for('static', filename='app.js') }}?v=7"
+    src="{{ url_for('static', filename='app.js') }}?v=10"
 ></script>
 
 </body>

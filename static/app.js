@@ -1,9 +1,10 @@
 const btn = document.getElementById("searchBtn");
+
 const pasteBtn = document.getElementById("pasteBtn");
+
 const input = document.getElementById("urlInput");
+
 const resultBox = document.getElementById("result");
-const dots = document.getElementById("loadingDots");
-const searchIcon = document.getElementById("searchIcon");
 
 
 btn.addEventListener("click", async () => {
@@ -18,19 +19,25 @@ btn.addEventListener("click", async () => {
 
     try {
 
-        const res = await fetch("/search", {
+        const response = await fetch("/search", {
+
             method: "POST",
+
             headers: {
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({ url })
+
+            body: JSON.stringify({
+                url
+            })
+
         });
 
-        if (!res.ok) {
-            throw new Error("서버 응답 실패");
+        if (!response.ok) {
+            throw new Error("서버 오류");
         }
 
-        const data = await res.json();
+        const data = await response.json();
 
         renderResult(data);
 
@@ -72,6 +79,17 @@ pasteBtn.addEventListener("click", async () => {
 });
 
 
+function setLoading(isLoading) {
+
+    if (isLoading) {
+        btn.classList.add("loading");
+    } else {
+        btn.classList.remove("loading");
+    }
+
+}
+
+
 function renderResult(data) {
 
     const list = Array.isArray(data.result)
@@ -84,6 +102,7 @@ function renderResult(data) {
             <div class="result-header">
 
                 <div class="header-left">
+
                     <div class="gallery-name">
                         ${data.gallery || "-"}
                     </div>
@@ -91,6 +110,7 @@ function renderResult(data) {
                     <div class="date-range">
                         ${data.range || "-"}
                     </div>
+
                 </div>
 
                 <button
@@ -128,34 +148,40 @@ function renderResult(data) {
 }
 
 
-function setLoading(isLoading) {
-
-    if (isLoading) {
-
-        btn.classList.add("loading");
-
-        dots.classList.remove("hidden");
-
-        searchIcon.classList.add("hidden");
-
-    } else {
-
-        btn.classList.remove("loading");
-
-        dots.classList.add("hidden");
-
-        searchIcon.classList.remove("hidden");
-
-    }
-
-}
-
-
 async function copyResult() {
 
     try {
 
-        const text = document.getElementById("result").innerText;
+        const gallery =
+            document.querySelector(".gallery-name")
+            ?.innerText
+            ?.trim() || "";
+
+        const range =
+            document.querySelector(".date-range")
+            ?.innerText
+            ?.trim() || "";
+
+        const rows = document.querySelectorAll(
+            ".table-row"
+        );
+
+        let text = "";
+
+        text += `${gallery}\n`;
+        text += `${range}\n`;
+
+        rows.forEach(row => {
+
+            const cols = row.querySelectorAll("span");
+
+            const line = Array.from(cols)
+                .map(col => col.innerText.trim())
+                .join("\t");
+
+            text += `${line}\n`;
+
+        });
 
         await navigator.clipboard.writeText(text);
 
