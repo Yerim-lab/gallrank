@@ -1,28 +1,24 @@
 import os
 import re
+import requests
 from datetime import datetime, timedelta
 from collections import defaultdict
 from urllib.parse import urlparse, parse_qs
 
-import requests
 from flask import Flask, request, jsonify, render_template
 from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
 # -----------------------
-# SESSION (mobile UA 고정)
+# SESSION
 # -----------------------
 session = requests.Session()
 session.headers.update({
-    "User-Agent": (
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
-        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
-    ),
-    "Referer": "https://m.dcinside.com/",
+    "User-Agent": "Mozilla/5.0",
+    "Referer": "https://gall.dcinside.com/",
     "Accept-Language": "ko-KR,ko;q=0.9"
 })
-
 
 # -----------------------
 # TIME RANGE
@@ -33,11 +29,10 @@ def get_range(days=7):
 
 
 # -----------------------
-# URL PARSE + NORMALIZE (FIXED)
+# URL NORMALIZE (mobile + pc 대응)
 # -----------------------
-def normalize_to_mobile(url: str) -> str:
+def normalize(url: str) -> str:
     parsed = urlparse(url)
-
     gid = parse_qs(parsed.query).get("id", [None])[0]
 
     if not gid:
@@ -50,7 +45,6 @@ def normalize_to_mobile(url: str) -> str:
 
     path = parsed.path.lower()
 
-    # m.dcinside는 무조건 list?id 구조가 정상
     if "/mini" in path:
         return f"https://m.dcinside.com/mini/list?id={gid}"
     elif "/mgallery" in path:
@@ -64,20 +58,14 @@ def normalize_to_mobile(url: str) -> str:
 # -----------------------
 def gallery_name(html: str):
     soup = BeautifulSoup(html, "html.parser")
-
     meta = soup.select_one("meta[name='description']")
-    if meta:
-        return meta.get("content", "").split(" - ")[0].strip()
-
-    title = soup.select_one("title")
-    if title:
-        return title.get_text(strip=True)
-
-    return None
+    if not meta:
+        return None
+    return meta.get("content", "").split(" - ")[0].strip()
 
 
 # -----------------------
-# DATE PARSER (robust mobile)
+# DATE PARSER
 # -----------------------
 def parse_date(el):
     try:
@@ -95,7 +83,7 @@ def parse_date(el):
             now = datetime.now()
             return now.replace(hour=h, minute=mi, second=0, microsecond=0)
 
-        # fallback title format
+        # title fallback
         t = el.get("title")
         if t:
             return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
@@ -113,7 +101,6 @@ def is_skip(row):
     el = row.select_one(".gall_subject")
     if not el:
         return False
-
     return el.get_text(strip=True) in ["공지", "AD", "설문"]
 
 
@@ -121,13 +108,14 @@ def is_skip(row):
 # WRITER
 # -----------------------
 def get_writer(row):
-    return (
+    el = (
         row.select_one(".nickname") or
         row.select_one(".gall_writer") or
-        row.select_one(".writer") or
         row.select_one(".ub-writer") or
+        row.select_one(".writer") or
         row.select_one("td")
     )
+    return el
 
 
 # -----------------------
@@ -136,8 +124,7 @@ def get_writer(row):
 def get_date(row):
     return (
         row.select_one(".gall_date") or
-        row.select_one(".date_time") or
-        row.select_one(".time")
+        row.select_one(".date_time")
     )
 
 
@@ -145,18 +132,16 @@ def get_date(row):
 # CORE CRAWLER
 # -----------------------
 def crawl(url):
-    base = normalize_to_mobile(url)
-
+    base = normalize(url)
     start, end = get_range(7)
 
     page = 1
-    MAX_PAGE = 50
+    MAX_PAGE = 100
 
     users = defaultdict(int)
     gname = None
 
     while page <= MAX_PAGE:
-
         try:
             res = session.get(f"{base}&page={page}", timeout=7)
         except Exception as e:
@@ -170,28 +155,22 @@ def crawl(url):
         if page == 1:
             gname = gallery_name(html)
 
-            # 최소 방어
             if "dcinside" not in html:
-                return {
-                    "error": "invalid_response",
-                    "sample": html[:300]
-                }
+                return {"error": "invalid_response", "sample": html[:300]}
 
         soup = BeautifulSoup(html, "html.parser")
 
-        # m.dcinside 구조 대응
         rows = (
             soup.select("li.ub-content") or
             soup.select("tr.ub-content") or
             soup.select("div.ub-content") or
-            soup.select("li") or
-            soup.select("tr")
+            soup.select("tr") or
+            soup.select("li")
         )
 
         found = False
 
         for row in rows:
-
             if is_skip(row):
                 continue
 
