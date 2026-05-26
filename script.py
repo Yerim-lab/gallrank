@@ -1,162 +1,113 @@
-import re
+from flask import Flask, request, jsonify
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse, parse_qs
-from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/123 Safari/537.36"
+    "User-Agent": "Mozilla/5.0"
 }
 
-SKIP_KEYWORDS = {"공지", "설문", "AD", "광고"}
+# ----------------------------
+# 갤러리 이름 추출
+# ----------------------------
+def get_gallery_title(soup):
+    og = soup.select_one('meta[property="og:title"]')
+    if og and og.get("content"):
+        return og["content"].replace(" - 커뮤니티 포털 디시인사이드", "").strip()
 
-TIMEOUT = 10
+    title = soup.title
+    if title:
+        return title.text.strip()
+
+    return "알 수 없는 갤러리"
 
 
 # ----------------------------
 # URL 정규화
 # ----------------------------
-def normalize_url(url: str):
+def normalize_url(url):
     url = url.strip()
-    return url.replace("https://m.dcinside.com", "https://gall.dcinside.com")
+
+    if "m.dcinside.com" in url:
+        url = url.replace("m.dcinside.com", "gall.dcinside.com")
+
+    if "http" not in url:
+        url = f"https://gall.dcinside.com/board/lists/?id={url}"
+
+    return url
 
 
 # ----------------------------
-# 갤러리 ID 추출 (확장 대응)
+# 크롤링
 # ----------------------------
-def extract_gall_id(url: str):
-    parsed = urlparse(url)
-    qs = parse_qs(parsed.query)
+def crawl(url):
+    r = requests.get(url, headers=HEADERS, timeout=10)
 
-    if "id" in qs:
-        return qs["id"][0]
+    # HTML 아닌 경우 차단 or 오류
+    if "text/html" not in r.headers.get("Content-Type", ""):
+        raise Exception("HTML 응답이 아님 (차단 가능)")
 
-    parts = parsed.path.split("/")
-    for p in reversed(parts):
-        if p and p not in {"board", "mgallery", "mini", "lists"}:
-            return p
+    soup = BeautifulSoup(r.text, "html.parser")
 
-    return None
+    gallery = get_gallery_title(soup)
 
-
-# ----------------------------
-# HTML 요청
-# ----------------------------
-def fetch_html(url: str):
-    r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-    return r.text
-
-
-# ----------------------------
-# 갤러리 이름 추출 (3단 fallback)
-# ----------------------------
-def get_gallery_name(soup: BeautifulSoup):
-    meta = soup.select_one('meta[name="title"]')
-    if meta and meta.get("content"):
-        return re.sub(r"\s*-\s*커뮤니티.*$", "", meta["content"]).strip()
-
-    og = soup.select_one('meta[property="og:title"]')
-    if og:
-        return og["content"].strip()
-
-    title = soup.select_one("title")
-    if title:
-        return title.text.strip()
-
-    return "Unknown Gallery"
-
-
-# ----------------------------
-# 글 목록 파싱 (누락 최소화)
-# ----------------------------
-def parse_rows(soup: BeautifulSoup):
     rows = []
 
-    for tr in soup.select("tr"):
-        num = tr.select_one(".gall_num")
-        nick = tr.select_one(".gall_writer, .nickname, .user_name, .gall_writer .nickname")
-        cnt = tr.select_one(".gall_count")
-
-        if not num or not nick or not cnt:
-            continue
-
-        num_text = num.text.strip()
-
-        if num_text in SKIP_KEYWORDS:
-            continue
-
-        nickname = nick.text.strip()
-
-        if not nickname or "undefined" in nickname:
-            continue
-
+    for tr in soup.select(".us-post tbody tr"):
         try:
-            count = int(cnt.text.strip())
+            rank = len(rows) + 1
+
+            nickname = tr.select_one(".gall_writer")
+            count = tr.select_one(".gall_count")
+            share = tr.select_one(".gall_percent")
+
+            if not nickname:
+                continue
+
+            rows.append({
+                "rank": rank,
+                "nickname": nickname.text.strip(),
+                "count": int(count.text.strip()) if count else 0,
+                "share": share.text.strip() if share else "0"
+            })
         except:
             continue
 
-        rows.append((nickname, count))
-
-    return rows
-
-
-# ----------------------------
-# 핵심 크롤링
-# ----------------------------
-def crawl(url: str):
-    url = normalize_url(url)
-
-    html = fetch_html(url)
-    soup = BeautifulSoup(html, "html.parser")
-
-    gallery = get_gallery_name(soup)
-    rows = parse_rows(soup)
-
-    result = {}
-
-    for nick, cnt in rows:
-        result[nick] = result.get(nick, 0) + cnt
-
-    sorted_data = sorted(result.items(), key=lambda x: x[1], reverse=True)
-
-    return gallery, sorted_data
+    return {
+        "gallery": gallery,
+        "result": rows
+    }
 
 
 # ----------------------------
 # API
 # ----------------------------
-@app.route("/crawl")
-def api():
-    url = request.args.get("url")
-
-    if not url:
-        return jsonify({"error": "missing url"}), 400
+@app.route("/api/rank")
+def api_rank():
+    url = request.args.get("url", "")
 
     try:
-        gallery, data = crawl(url)
-
-        total = sum(x[1] for x in data) or 1
-
-        return jsonify({
-            "gallery": gallery,
-            "data": [
-                {
-                    "rank": i + 1,
-                    "nick": n,
-                    "count": c,
-                    "share": round(c / total * 100, 2)
-                }
-                for i, (n, c) in enumerate(data[:200])
-            ]
-        })
+        url = normalize_url(url)
+        data = crawl(url)
+        return jsonify(data)
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # ----------------------------
-# Render / Gunicorn entry
+# Render health check (중요)
 # ----------------------------
-app = app
+@app.route("/")
+def home():
+    return "gallrank running"
+
+
+# ----------------------------
+# 실행 (Render용)
+# ----------------------------
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
