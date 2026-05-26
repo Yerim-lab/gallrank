@@ -3,176 +3,207 @@ import requests
 
 from bs4 import BeautifulSoup
 from collections import Counter
-from datetime import datetime, timedelta
 
 
 HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Mozilla/5.0 "
+        "(Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 "
+        "(KHTML, like Gecko) "
         "Chrome/136.0 Safari/537.36"
-    )
+    ),
+    "Referer": "https://gall.dcinside.com/"
 }
 
 
-def extract_gallery_id(url):
+def parse_url(url):
     url = url.strip()
 
-    # id=xxx 우선 추출
-    m = re.search(r"id=([a-zA-Z0-9_]+)", url)
+    # 마이너 갤러리
+    if "mgallery" in url:
+        match = re.search(r"id=([a-zA-Z0-9_]+)", url)
 
-    if m:
-        return m.group(1)
+        if match:
+            return {
+                "type": "mgallery",
+                "id": match.group(1)
+            }
 
-    # 숏 URL 처리
-    m = re.search(
+    # 미니 갤러리
+    if "mini" in url:
+        match = re.search(r"id=([a-zA-Z0-9_]+)", url)
+
+        if match:
+            return {
+                "type": "mini",
+                "id": match.group(1)
+            }
+
+    # 일반 갤러리 lists
+    if "board/lists" in url:
+        match = re.search(r"id=([a-zA-Z0-9_]+)", url)
+
+        if match:
+            return {
+                "type": "board",
+                "id": match.group(1)
+            }
+
+    # 숏 URL
+    match = re.search(
         r"dcinside\.com/([a-zA-Z0-9_]+)",
         url
     )
 
-    if m:
-        gid = m.group(1)
+    if match:
+        gid = match.group(1)
 
         blocked = [
-            "mgallery",
+            "board",
             "mini",
-            "board"
+            "mgallery"
         ]
 
         if gid not in blocked:
-            return gid
+            return {
+                "type": "auto",
+                "id": gid
+            }
 
     return None
 
 
-def build_gallery_url(gallery_id):
-    return (
-        "https://gall.dcinside.com/"
-        f"board/lists/?id={gallery_id}"
+def build_urls(gallery_id):
+    return [
+        (
+            "https://gall.dcinside.com/"
+            f"board/lists/?id={gallery_id}"
+        ),
+
+        (
+            "https://gall.dcinside.com/"
+            f"mgallery/board/lists/?id={gallery_id}"
+        ),
+
+        (
+            "https://gall.dcinside.com/"
+            f"mini/board/lists/?id={gallery_id}"
+        )
+    ]
+
+
+def request_gallery(url, page):
+    full_url = f"{url}&page={page}"
+
+    response = requests.get(
+        full_url,
+        headers=HEADERS,
+        timeout=15
     )
 
+    print("REQUEST:", full_url)
+    print("STATUS:", response.status_code)
 
-def extract_gallery_name(soup):
-    title = soup.select_one(".title_subject")
-
-    if title:
-        return title.text.strip()
-
-    return "갤러리"
-
-
-def parse_date(date_text):
-    now = datetime.now()
-
-    try:
-        if "." in date_text and ":" not in date_text:
-            month, day = map(int, date_text.split("."))
-
-            return datetime(
-                now.year,
-                month,
-                day
-            )
-
-        if "-" in date_text:
-            return datetime.strptime(
-                date_text,
-                "%Y-%m-%d"
-            )
-
-    except:
+    if response.status_code != 200:
         return None
 
+    return response
+
+
+def find_working_gallery(gallery_id):
+    urls = build_urls(gallery_id)
+
+    for url in urls:
+        response = request_gallery(url, 1)
+
+        if not response:
+            continue
+
+        soup = BeautifulSoup(
+            response.text,
+            "lxml"
+        )
+
+        rows = soup.select("tr.ub-content")
+
+        if rows:
+            print("WORKING URL:", url)
+            return url
+
     return None
 
 
-def crawl_gallery(user_url, days=7):
-    gallery_id = extract_gallery_id(user_url)
+def crawl_gallery(user_url):
+    parsed = parse_url(user_url)
 
-    if not gallery_id:
-        raise Exception("갤러리 ID 추출 실패")
+    if not parsed:
+        raise Exception(
+            "URL 파싱 실패"
+        )
 
-    base_url = build_gallery_url(gallery_id)
+    gallery_id = parsed["id"]
 
-    print("FINAL BASE URL:", base_url)
-
-    limit_date = (
-        datetime.now() - timedelta(days=days)
+    working_url = find_working_gallery(
+        gallery_id
     )
 
-    nick_counter = Counter()
+    if not working_url:
+        raise Exception(
+            "갤러리를 찾을 수 없음"
+        )
+
+    counter = Counter()
 
     gallery_name = ""
-    total_posts = 0
 
     page = 1
 
     while True:
-        params = {
-            "id": gallery_id,
-            "page": page
-        }
-
-        print("PAGE:", page)
-
-        res = requests.get(
-            "https://gall.dcinside.com/board/lists/",
-            params=params,
-            headers=HEADERS,
-            timeout=10
+        response = request_gallery(
+            working_url,
+            page
         )
 
-        print("REQUEST URL:", res.url)
-        print("STATUS:", res.status_code)
-
-        if res.status_code != 200:
-            raise Exception(
-                f"HTTP {res.status_code}"
-            )
+        if not response:
+            break
 
         soup = BeautifulSoup(
-            res.text,
-            "html.parser"
+            response.text,
+            "lxml"
         )
 
         if not gallery_name:
-            gallery_name = extract_gallery_name(
-                soup
+            title = soup.select_one(
+                ".title_subject"
             )
 
-        rows = soup.select("tr.ub-content")
+            if title:
+                gallery_name = (
+                    title.text.strip()
+                )
+            else:
+                gallery_name = gallery_id
+
+        rows = soup.select(
+            "tr.ub-content"
+        )
 
         if not rows:
             break
 
-        stop = False
+        post_found = False
 
         for row in rows:
-            if "notice" in row.get("class", []):
+            if "notice" in row.get(
+                "class",
+                []
+            ):
                 continue
 
-            date_el = row.select_one(".gall_date")
-
-            if not date_el:
-                continue
-
-            date_text = (
-                date_el.get("title")
-                or date_el.text.strip()
+            writer = row.select_one(
+                ".gall_writer"
             )
-
-            date_text = date_text[:10]
-
-            post_date = parse_date(date_text)
-
-            if not post_date:
-                continue
-
-            if post_date < limit_date:
-                stop = True
-                break
-
-            writer = row.select_one(".gall_writer")
 
             if not writer:
                 continue
@@ -188,27 +219,35 @@ def crawl_gallery(user_url, days=7):
             if not nickname:
                 nickname = "ㅇㅇ"
 
-            nick_counter[nickname] += 1
-            total_posts += 1
+            counter[nickname] += 1
 
-        if stop:
+            post_found = True
+
+        if not post_found:
             break
 
         page += 1
+
+        if page > 20:
+            break
+
+    total = sum(counter.values())
 
     result = []
 
     rank = 1
 
-    for nick, count in nick_counter.most_common():
+    for nickname, count in (
+        counter.most_common()
+    ):
         share = round(
-            (count / total_posts) * 100,
+            (count / total) * 100,
             2
         )
 
         result.append({
             "rank": rank,
-            "nickname": nick,
+            "nickname": nickname,
             "count": count,
             "share": share
         })
@@ -217,6 +256,6 @@ def crawl_gallery(user_url, days=7):
 
     return {
         "gallery": gallery_name,
-        "total": total_posts,
+        "total": total,
         "result": result
     }
