@@ -10,7 +10,7 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/123 Safari/537.36"
 }
 
-SKIP = {"공지", "설문", "AD", "광고"}
+SKIP_KEYWORDS = {"공지", "설문", "AD", "광고"}
 
 TIMEOUT = 10
 
@@ -18,17 +18,13 @@ TIMEOUT = 10
 # ----------------------------
 # URL 정규화
 # ----------------------------
-def normalize(url: str):
+def normalize_url(url: str):
     url = url.strip()
-
-    # 모바일 → PC
-    url = url.replace("https://m.dcinside.com", "https://gall.dcinside.com")
-
-    return url
+    return url.replace("https://m.dcinside.com", "https://gall.dcinside.com")
 
 
 # ----------------------------
-# 갤러리 ID 추출 (mini / mgallery / board / root 대응)
+# 갤러리 ID 추출 (확장 대응)
 # ----------------------------
 def extract_gall_id(url: str):
     parsed = urlparse(url)
@@ -37,9 +33,8 @@ def extract_gall_id(url: str):
     if "id" in qs:
         return qs["id"][0]
 
-    # /board/nouvellevague 같은 구조
     parts = parsed.path.split("/")
-    for p in parts[::-1]:
+    for p in reversed(parts):
         if p and p not in {"board", "mgallery", "mini", "lists"}:
             return p
 
@@ -47,15 +42,15 @@ def extract_gall_id(url: str):
 
 
 # ----------------------------
-# HTML 가져오기 (차단 페이지 대응)
+# HTML 요청
 # ----------------------------
-def fetch(url: str):
+def fetch_html(url: str):
     r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
     return r.text
 
 
 # ----------------------------
-# 갤러리 이름 안정 추출
+# 갤러리 이름 추출 (3단 fallback)
 # ----------------------------
 def get_gallery_name(soup: BeautifulSoup):
     meta = soup.select_one('meta[name="title"]')
@@ -74,12 +69,11 @@ def get_gallery_name(soup: BeautifulSoup):
 
 
 # ----------------------------
-# 글 목록 파싱 (누락 방지 핵심)
+# 글 목록 파싱 (누락 최소화)
 # ----------------------------
 def parse_rows(soup: BeautifulSoup):
     rows = []
 
-    # 디시 구조는 tr 기반
     for tr in soup.select("tr"):
         num = tr.select_one(".gall_num")
         nick = tr.select_one(".gall_writer, .nickname, .user_name, .gall_writer .nickname")
@@ -90,7 +84,7 @@ def parse_rows(soup: BeautifulSoup):
 
         num_text = num.text.strip()
 
-        if num_text in SKIP:
+        if num_text in SKIP_KEYWORDS:
             continue
 
         nickname = nick.text.strip()
@@ -112,8 +106,9 @@ def parse_rows(soup: BeautifulSoup):
 # 핵심 크롤링
 # ----------------------------
 def crawl(url: str):
-    url = normalize(url)
-    html = fetch(url)
+    url = normalize_url(url)
+
+    html = fetch_html(url)
     soup = BeautifulSoup(html, "html.parser")
 
     gallery = get_gallery_name(soup)
@@ -162,7 +157,6 @@ def api():
 
 
 # ----------------------------
-# Render/Gunicorn 대응
+# Render / Gunicorn entry
 # ----------------------------
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+app = app
