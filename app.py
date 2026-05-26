@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, render_template
 from script import crawl_gallery, normalize_dc_url
+import traceback
 
 app = Flask(__name__)
 
@@ -20,22 +21,30 @@ def api_rank():
 
     normalized_url = normalize_dc_url(user_url)
 
+    print("INPUT URL:", user_url)
+    print("NORMALIZED URL:", normalized_url)
+
     if not normalized_url:
         return jsonify({
-            "error": "잘못된 URL"
+            "error": "올바른 디시 URL이 아닙니다."
         })
 
     try:
         data = crawl_gallery(normalized_url)
+
         return jsonify(data)
 
     except Exception as e:
-        print(e)
+        traceback.print_exc()
 
         return jsonify({
-            "error": "크롤링 실패"
+            "error": str(e)
         })
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(
+        host="0.0.0.0",
+        port=10000,
+        debug=True
+    )

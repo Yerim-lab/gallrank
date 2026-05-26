@@ -18,37 +18,34 @@ HEADERS = {
 def normalize_dc_url(url):
     url = url.strip()
 
-    # 이미 게시판 주소인 경우
-    if "lists?id=" in url:
-        return url
-
-    # 미니 갤러리
-    m = re.search(r"dcinside\.com/mini/([^/?#]+)", url)
+    # id=xxx 추출
+    m = re.search(r"id=([a-zA-Z0-9_]+)", url)
 
     if m:
         gid = m.group(1)
 
         return (
             f"https://gall.dcinside.com/"
-            f"mini/board/lists?id={gid}"
+            f"board/lists/?id={gid}"
         )
 
-    # 마이너 갤러리
-    m = re.search(r"dcinside\.com/mgallery/([^/?#]+)", url)
+    # 숏 URL 처리
+    m = re.search(
+        r"dcinside\.com/([a-zA-Z0-9_]+)",
+        url
+    )
 
     if m:
         gid = m.group(1)
 
-        return (
-            f"https://gall.dcinside.com/"
-            f"mgallery/board/lists?id={gid}"
-        )
+        blocked = [
+            "mgallery",
+            "mini",
+            "board"
+        ]
 
-    # 일반 갤러리
-    m = re.search(r"dcinside\.com/([^/?#]+)", url)
-
-    if m:
-        gid = m.group(1)
+        if gid in blocked:
+            return None
 
         return (
             f"https://gall.dcinside.com/"
@@ -73,13 +70,17 @@ def parse_date(date_text):
     now = datetime.now()
 
     try:
-        # 05.26 형태
+        # 05.26
         if "." in date_text and ":" not in date_text:
             month, day = map(int, date_text.split("."))
 
-            return datetime(now.year, month, day)
+            return datetime(
+                now.year,
+                month,
+                day
+            )
 
-        # 2026-05-26 형태
+        # 2026-05-26
         if "-" in date_text:
             return datetime.strptime(
                 date_text,
@@ -93,7 +94,9 @@ def parse_date(date_text):
 
 
 def crawl_gallery(url, days=7):
-    limit_date = datetime.now() - timedelta(days=days)
+    limit_date = (
+        datetime.now() - timedelta(days=days)
+    )
 
     nick_counter = Counter()
 
@@ -105,7 +108,7 @@ def crawl_gallery(url, days=7):
     while True:
         page_url = f"{url}&page={page}"
 
-        print(f"[CRAWL] {page_url}")
+        print("CRAWL URL:", page_url)
 
         res = requests.get(
             page_url,
@@ -113,9 +116,12 @@ def crawl_gallery(url, days=7):
             timeout=10
         )
 
+        print("STATUS:", res.status_code)
+
         if res.status_code != 200:
-            print("STATUS ERROR:", res.status_code)
-            break
+            raise Exception(
+                f"HTTP {res.status_code}"
+            )
 
         soup = BeautifulSoup(
             res.text,
@@ -123,7 +129,9 @@ def crawl_gallery(url, days=7):
         )
 
         if not gallery_name:
-            gallery_name = extract_gallery_name(soup)
+            gallery_name = extract_gallery_name(
+                soup
+            )
 
         rows = soup.select("tr.ub-content")
 
@@ -133,6 +141,10 @@ def crawl_gallery(url, days=7):
         stop = False
 
         for row in rows:
+            # 공지 제외
+            if "notice" in row.get("class", []):
+                continue
+
             date_el = row.select_one(".gall_date")
 
             if not date_el:
