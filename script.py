@@ -1,92 +1,56 @@
 import re
 import requests
-
 from bs4 import BeautifulSoup
 from collections import Counter
 
 
 HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 "
-        "(Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 "
-        "(KHTML, like Gecko) "
-        "Chrome/136.0 Safari/537.36"
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0 Safari/537.36"
     )
 }
 
 
-def extract_gallery_id(url):
+def extract_gallery_id(url: str):
 
-    match = re.search(
-        r"id=([a-zA-Z0-9_]+)",
-        url
-    )
-
+    match = re.search(r"id=([a-zA-Z0-9_]+)", url)
     if match:
         return match.group(1)
 
-    match = re.search(
-        r"dcinside\\.com/([a-zA-Z0-9_]+)",
-        url
-    )
-
+    match = re.search(r"dcinside\.com/([a-zA-Z0-9_]+)", url)
     if match:
-
         gid = match.group(1)
 
-        blocked = [
-            "board",
-            "mini",
-            "mgallery"
-        ]
-
-        if gid not in blocked:
+        if gid not in ["board", "mgallery", "mini"]:
             return gid
 
     return None
 
 
-def get_candidate_urls(gid):
+def build_candidate_urls(gid: str):
 
     return [
-
         f"https://gall.dcinside.com/board/lists/?id={gid}",
-
         f"https://gall.dcinside.com/mgallery/board/lists/?id={gid}",
-
-        f"https://gall.dcinside.com/mini/board/lists/?id={gid}"
-
+        f"https://gall.dcinside.com/mini/board/lists/?id={gid}",
     ]
 
 
-def find_gallery_url(gid):
+def find_working_url(gid: str):
 
-    urls = get_candidate_urls(gid)
-
-    for url in urls:
+    for url in build_candidate_urls(gid):
 
         try:
+            r = requests.get(url, headers=HEADERS, timeout=10)
 
-            response = requests.get(
-                url,
-                headers=HEADERS,
-                timeout=10
-            )
-
-            if response.status_code != 200:
+            if r.status_code != 200:
                 continue
 
-            soup = BeautifulSoup(
-                response.text,
-                "lxml"
-            )
+            soup = BeautifulSoup(r.text, "lxml")
 
-            rows = soup.select(
-                "tr.ub-content"
-            )
-
-            if rows:
+            if soup.select_one("tr.ub-content"):
                 return url
 
         except:
@@ -95,46 +59,36 @@ def find_gallery_url(gid):
     return None
 
 
-def get_gallery_name(soup):
+def get_gallery_name(soup: BeautifulSoup):
 
-    meta_title = soup.select_one(
-        'meta[name="title"]'
-    )
+    meta = soup.select_one('meta[name="title"]')
 
-    if not meta_title:
+    if not meta:
         return "갤러리"
 
-    content = meta_title.get(
-        "content",
+    title = meta.get("content", "").strip()
+
+    title = title.replace(
+        " - 커뮤니티 포털 디시인사이드",
         ""
     ).strip()
 
-    content = (
-        content
-        .replace(
-            " - 커뮤니티 포털 디시인사이드",
-            ""
-        )
-        .strip()
-    )
-
-    return content
+    return title
 
 
-def crawl_gallery(user_url):
+def crawl_gallery(user_url: str):
 
     gid = extract_gallery_id(user_url)
 
     if not gid:
-        raise Exception("갤러리 ID 추출 실패")
+        raise Exception("갤러리 ID를 찾을 수 없음")
 
-    base_url = find_gallery_url(gid)
+    base_url = find_working_url(gid)
 
     if not base_url:
         raise Exception("갤러리를 찾을 수 없음")
 
     counter = Counter()
-
     gallery_name = gid
 
     page = 1
@@ -144,30 +98,19 @@ def crawl_gallery(user_url):
         url = f"{base_url}&page={page}"
 
         try:
-
-            response = requests.get(
-                url,
-                headers=HEADERS,
-                timeout=10
-            )
-
+            r = requests.get(url, headers=HEADERS, timeout=10)
         except:
             break
 
-        if response.status_code != 200:
+        if r.status_code != 200:
             break
 
-        soup = BeautifulSoup(
-            response.text,
-            "lxml"
-        )
+        soup = BeautifulSoup(r.text, "lxml")
 
         if page == 1:
             gallery_name = get_gallery_name(soup)
 
-        rows = soup.select(
-            "tr.ub-content"
-        )
+        rows = soup.select("tr.ub-content")
 
         if not rows:
             break
@@ -176,32 +119,34 @@ def crawl_gallery(user_url):
 
         for row in rows:
 
-            if "notice" in row.get(
-                "class",
-                []
-            ):
+            # 공지 제외
+            if "notice" in row.get("class", []):
                 continue
 
-            writer = row.select_one(
-                ".gall_writer"
-            )
+            # 제목 분류 (설문 / AD / 공지 제외)
+            subject = row.select_one(".gall_subject")
+
+            if subject:
+                text = subject.get_text(strip=True)
+
+                if text in ["공지", "설문", "AD"]:
+                    continue
+
+            writer = row.select_one(".gall_writer")
 
             if not writer:
                 continue
 
             nickname = (
                 writer.get("data-nick")
-                or writer.text.strip()
+                or writer.get_text(strip=True)
                 or "ㅇㅇ"
-            )
-
-            nickname = nickname.strip()
+            ).strip()
 
             if not nickname:
                 nickname = "ㅇㅇ"
 
             counter[nickname] += 1
-
             valid_count += 1
 
         if valid_count == 0:
@@ -209,21 +154,17 @@ def crawl_gallery(user_url):
 
         page += 1
 
-        if page > 15:
+        if page > 20:
             break
 
     total = sum(counter.values())
 
     result = []
-
     rank = 1
 
     for nickname, count in counter.most_common():
 
-        share = round(
-            (count / total) * 100,
-            2
-        )
+        share = round((count / total) * 100, 2) if total else 0
 
         result.append({
             "rank": rank,
