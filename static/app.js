@@ -15,6 +15,95 @@ let latestData = null;
 let loading = false;
 
 
+function createSearchIcon() {
+
+    return `
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+
+            <circle
+                cx="11"
+                cy="11"
+                r="7"
+            />
+
+            <line
+                x1="16.65"
+                y1="16.65"
+                x2="21"
+                y2="21"
+            />
+
+        </svg>
+    `;
+}
+
+
+function createCopyIcon() {
+
+    return `
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+
+            <rect
+                x="9"
+                y="9"
+                width="13"
+                height="13"
+                rx="2"
+            />
+
+            <path
+                d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+            />
+
+        </svg>
+    `;
+}
+
+
+function createCheckIcon() {
+
+    return `
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+
+            <polyline
+                points="20 6 9 17 4 12"
+            />
+
+        </svg>
+    `;
+}
+
+
 function setLoading(state) {
 
     loading = state;
@@ -32,34 +121,8 @@ function setLoading(state) {
 
     else {
 
-        searchBtn.innerHTML = `
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="22"
-                height="22"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="white"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-            >
-
-                <circle
-                    cx="11"
-                    cy="11"
-                    r="7"
-                />
-
-                <line
-                    x1="16.65"
-                    y1="16.65"
-                    x2="21"
-                    y2="21"
-                />
-
-            </svg>
-        `;
+        searchBtn.innerHTML =
+            createSearchIcon();
     }
 }
 
@@ -68,9 +131,12 @@ function getDate(offset = 0) {
 
     const d = new Date();
 
-    d.setDate(d.getDate() + offset);
+    d.setDate(
+        d.getDate() + offset
+    );
 
-    const y = d.getFullYear();
+    const y =
+        d.getFullYear();
 
     const m = String(
         d.getMonth() + 1
@@ -111,7 +177,7 @@ function renderResult(data) {
                     <div class="result-date">
 
                         ${getDate(-7)}
-                        ~
+                        -
                         ${getDate()}
 
                     </div>
@@ -123,31 +189,7 @@ function renderResult(data) {
                     onclick="copyResult()"
                 >
 
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="18"
-                        height="18"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="white"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    >
-
-                        <rect
-                            x="9"
-                            y="9"
-                            width="13"
-                            height="13"
-                            rx="2"
-                        />
-
-                        <path
-                            d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-                        />
-
-                    </svg>
+                    ${createCopyIcon()}
 
                 </button>
 
@@ -231,7 +273,6 @@ async function searchGallery() {
 
         result.innerHTML =
             renderResult(data);
-
     }
 
     catch (e) {
@@ -279,6 +320,25 @@ async function copyResult() {
     await navigator.clipboard.writeText(
         text
     );
+
+    const btn =
+        document.querySelector(".copy-btn");
+
+    if (!btn) return;
+
+    btn.classList.add("copied");
+
+    btn.innerHTML =
+        createCheckIcon();
+
+    setTimeout(() => {
+
+        btn.classList.remove("copied");
+
+        btn.innerHTML =
+            createCopyIcon();
+
+    }, 1200);
 }
 
 
@@ -309,7 +369,6 @@ pasteBtn.addEventListener(
                 await navigator.clipboard.readText();
 
             input.value = text;
-
         }
 
         catch (e) {
