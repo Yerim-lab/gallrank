@@ -1,12 +1,12 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, render_template
 from script import crawl_gallery, normalize_dc_url
 
-app = Flask(__name__, static_folder="static")
+app = Flask(__name__)
 
 
 @app.route("/")
-def index():
-    return send_from_directory("static", "index.html")
+def home():
+    return render_template("index.html")
 
 
 @app.route("/api/rank")
@@ -22,12 +22,11 @@ def api_rank():
 
     if not normalized_url:
         return jsonify({
-            "error": "올바른 디시 URL이 아닙니다."
+            "error": "잘못된 URL"
         })
 
     try:
         data = crawl_gallery(normalized_url)
-
         return jsonify(data)
 
     except Exception as e:
@@ -39,4 +38,4 @@ def api_rank():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=10000)
