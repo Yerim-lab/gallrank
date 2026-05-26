@@ -16,9 +16,29 @@ HEADERS = {
 
 
 # ---------------------------
-# 1. URL resolve + 정규화 (핵심)
+# 1. URL 정규화 (앱/복사 링크 대응)
+# ---------------------------
+def normalize_url(url: str):
+    url = url.strip()
+
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+
+    if url.startswith("//"):
+        return "https:" + url
+
+    if "dcinside.com" in url:
+        return "https://" + url
+
+    return url
+
+
+# ---------------------------
+# 2. resolve + type/id 추출
 # ---------------------------
 def resolve_dcinside(url: str):
+    url = normalize_url(url)
+
     r = requests.get(url, headers=HEADERS, timeout=10, allow_redirects=True)
     final_url = r.url
 
@@ -29,12 +49,10 @@ def resolve_dcinside(url: str):
 
     path = parsed.path.strip("/")
 
-    # id fallback
     if not gid:
         parts = path.split("/")
         gid = parts[-1] if parts else None
 
-    # type 결정 (최종 URL 기준)
     if "/mini/" in parsed.path:
         gtype = "mini"
     elif "/mgallery/" in parsed.path:
@@ -46,7 +64,7 @@ def resolve_dcinside(url: str):
 
 
 # ---------------------------
-# 2. base url 생성
+# 3. base url 생성 (단일 경로)
 # ---------------------------
 def build_base_url(gtype, gid):
     if not gid:
@@ -61,7 +79,7 @@ def build_base_url(gtype, gid):
 
 
 # ---------------------------
-# 3. 필터 (공지/AD/설문 제거)
+# 4. 필터 (공지/AD/설문 제거)
 # ---------------------------
 def is_filtered_row(row):
     if "notice" in (row.get("class") or []):
@@ -83,7 +101,7 @@ def is_filtered_row(row):
 
 
 # ---------------------------
-# 4. 날짜 파싱 (DCInside 대응)
+# 5. 날짜 파싱 (DCInside 전체 대응)
 # ---------------------------
 def parse_post_date(row):
     el = row.select_one(".gall_date")
@@ -118,7 +136,7 @@ def parse_post_date(row):
 
 
 # ---------------------------
-# 5. 크롤링 엔진
+# 6. 크롤링 엔진
 # ---------------------------
 def crawl_base(base_url, cutoff, counter):
     page = 1
@@ -144,8 +162,12 @@ def crawl_base(base_url, cutoff, counter):
                 continue
 
             post_date = parse_post_date(row)
+
+            # 핵심: 날짜 없는 글은 완전 제외
             if not post_date:
                 continue
+
+            cutoff = cutoff
 
             if post_date < cutoff:
                 continue
@@ -169,7 +191,7 @@ def crawl_base(base_url, cutoff, counter):
 
 
 # ---------------------------
-# 6. main
+# 7. main
 # ---------------------------
 def crawl_gallery(url: str):
     gtype, gid, final_url = resolve_dcinside(url)
@@ -179,7 +201,7 @@ def crawl_gallery(url: str):
 
     base_url = build_base_url(gtype, gid)
     if not base_url:
-        raise ValueError("base_url 생성 실패")
+        raise ValueError("base URL 생성 실패")
 
     now = datetime.now()
     cutoff = now - timedelta(days=7)
@@ -198,7 +220,7 @@ def crawl_gallery(url: str):
             "rank": rank,
             "nickname": nickname,
             "count": count,
-            "share": round((count / total) * 100, 2) if total else 0
+            "share": round(count / total * 100, 2) if total else 0
         })
         rank += 1
 
