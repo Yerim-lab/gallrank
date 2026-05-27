@@ -1,6 +1,7 @@
 const input = document.getElementById("urlInput");
 const searchBtn = document.getElementById("searchBtn");
 const pasteBtn = document.getElementById("pasteBtn");
+
 const result = document.getElementById("result");
 const noticeBox = document.getElementById("noticeBox");
 
@@ -9,10 +10,31 @@ let loading = false;
 
 
 /* =========================
+   안내창 표시/숨김
+========================= */
+
+function showNotice() {
+
+    if (!noticeBox) return;
+
+    noticeBox.style.display = "block";
+}
+
+
+function hideNotice() {
+
+    if (!noticeBox) return;
+
+    noticeBox.style.display = "none";
+}
+
+
+/* =========================
    아이콘
 ========================= */
 
 function createSearchIcon() {
+
     return `
         <svg xmlns="http://www.w3.org/2000/svg"
             width="22"
@@ -33,6 +55,7 @@ function createSearchIcon() {
 
 
 function createCopyIcon() {
+
     return `
         <svg xmlns="http://www.w3.org/2000/svg"
             width="18"
@@ -53,6 +76,7 @@ function createCopyIcon() {
 
 
 function createCheckIcon() {
+
     return `
         <svg xmlns="http://www.w3.org/2000/svg"
             width="18"
@@ -185,6 +209,9 @@ async function searchGallery() {
 
     result.innerHTML = "";
 
+    // 검색 시작 시 안내창 유지
+    showNotice();
+
     try {
 
         const response = await fetch(
@@ -206,7 +233,9 @@ async function searchGallery() {
 
             console.error(jsonError);
 
-            throw new Error("서버가 JSON이 아닌 응답을 반환했습니다. 다시 시도하세요.");
+            throw new Error(
+                "서버가 JSON이 아닌 응답을 반환했습니다."
+            );
 
         }
 
@@ -226,22 +255,18 @@ async function searchGallery() {
 
         latestData = data;
 
-        // 안내창 숨김
-        if (noticeBox) {
-            noticeBox.style.display = "none";
-        }
-
         // 결과 출력
         result.innerHTML = renderResult(data);
+
+        // 결과 성공 시 안내창 숨김
+        hideNotice();
 
     } catch (e) {
 
         console.error("SEARCH ERROR:", e);
 
-        // 안내창 다시 표시
-        if (noticeBox) {
-            noticeBox.style.display = "block";
-        }
+        // 에러 시 안내창 다시 표시
+        showNotice();
 
         result.innerHTML = `
             <div class="error-box">
@@ -319,6 +344,7 @@ input.addEventListener("keydown", e => {
 
 });
 
+
 pasteBtn.addEventListener("click", async () => {
 
     try {
@@ -339,3 +365,4 @@ pasteBtn.addEventListener("click", async () => {
 window.copyResult = copyResult;
 
 setLoading(false);
+showNotice();
