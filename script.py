@@ -20,6 +20,7 @@ BASE = {
 
 
 def resolve_url(url: str):
+
     url = url.strip()
 
     if not url.startswith("http"):
@@ -40,6 +41,7 @@ def resolve_url(url: str):
 
 
 def extract_gid(url: str):
+
     url = resolve_url(url)
 
     m = re.search(r"id=([a-zA-Z0-9_]+)", url)
@@ -51,10 +53,12 @@ def extract_gid(url: str):
 
 
 def is_mini_url(url: str):
+
     return "/mini/" in url
 
 
 def is_valid_gallery_page(html: str):
+
     soup = BeautifulSoup(html, "lxml")
 
     return bool(
@@ -65,6 +69,7 @@ def is_valid_gallery_page(html: str):
 
 
 def detect_gallery_type(user_url: str):
+
     url = resolve_url(user_url)
 
     gid = extract_gid(url)
@@ -108,6 +113,7 @@ def is_filtered_row(row):
     num = row.select_one(".gall_num")
 
     if num:
+
         text = num.get_text(strip=True)
 
         if text in ["공지", "설문", "AD", "광고"]:
@@ -116,6 +122,7 @@ def is_filtered_row(row):
     subject = row.select_one(".gall_subject")
 
     if subject:
+
         text = subject.get_text(strip=True)
 
         if text in ["공지", "설문", "AD", "광고"]:
@@ -126,43 +133,39 @@ def is_filtered_row(row):
 
 def get_writer(row):
 
-    # 우선순위 1:
-    # span.nickname 의 title 사용
-    nick_span = row.select_one("span.nickname")
+    # 고닉 / 반고닉
+    fixed = row.select_one("span.nickname.in")
 
-    if nick_span:
-        title = nick_span.get("title", "").strip()
+    if fixed:
 
-        if title:
-            return title
-
-        text = nick_span.get_text(strip=True)
-
-        if text:
-            return text
-
-    # 우선순위 2:
-    # gall_writer / ub-writer 속성 사용
-    writer = row.select_one(".gall_writer") or row.select_one(".ub-writer")
-
-    if writer:
-
-        nick = (
-            writer.get("data-nick")
-            or writer.get("data-user_nick")
-            or writer.get("title")
-        )
+        nick = fixed.get("title", "").strip()
 
         if nick:
-            nick = nick.strip()
+            return nick
 
-            if nick:
-                return nick
+        return "오류값"
 
-        text = writer.get_text(strip=True)
+    # 유동
+    anon = row.select_one("span.nickname")
 
-        if text:
-            return text
+    if anon:
+
+        nick = anon.get("title", "").strip()
+
+        ip = ""
+
+        ip_el = row.select_one("span.ip")
+
+        if ip_el:
+            ip = ip_el.get_text(strip=True)
+
+        if nick and ip:
+            return f"{nick}{ip}"
+
+        if nick:
+            return nick
+
+        return "오류값"
 
     return "오류값"
 
@@ -172,6 +175,7 @@ def get_gallery_name(soup):
     meta = soup.select_one('meta[name="title"]')
 
     if meta:
+
         content = meta.get("content", "").strip()
 
         if content:
@@ -180,6 +184,7 @@ def get_gallery_name(soup):
     h1 = soup.select_one("h1")
 
     if h1:
+
         text = h1.get_text(strip=True)
 
         if text:
