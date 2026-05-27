@@ -151,7 +151,7 @@ function renderResult(data) {
                     <h2>${escapeHtml(data.gallery)}</h2>
 
                     <div class="result-date">
-                        ${escapeHtml(data.range_text ?? "최근 100 페이지 집계")}
+                        ${escapeHtml(data.range_text ?? "최근 1,000 페이지 집계")}
                     </div>
 
                 </div>
