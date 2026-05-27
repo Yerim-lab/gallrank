@@ -133,41 +133,39 @@ def is_filtered_row(row):
 
 def get_writer(row):
 
-    # 고닉 / 반고닉
-    fixed = row.select_one("span.nickname.in")
+    nick_el = row.select_one("span.nickname")
 
-    if fixed:
-
-        nick = fixed.get("title", "").strip()
-
-        if nick:
-            return nick
-
+    if not nick_el:
         return "오류값"
+
+    classes = nick_el.get("class", [])
+
+    nick = nick_el.get("title", "").strip()
+
+    if not nick:
+        nick = nick_el.get_text(strip=True)
+
+    nick = nick.strip()
+
+    if not nick:
+        return "오류값"
+
+    # 고닉 / 반고닉
+    if "in" in classes:
+        return nick
 
     # 유동
-    anon = row.select_one("span.nickname")
+    ip = ""
 
-    if anon:
+    ip_el = row.select_one("span.ip")
 
-        nick = anon.get("title", "").strip()
+    if ip_el:
+        ip = ip_el.get_text(strip=True).strip()
 
-        ip = ""
+    if ip:
+        return f"{nick}{ip}"
 
-        ip_el = row.select_one("span.ip")
-
-        if ip_el:
-            ip = ip_el.get_text(strip=True)
-
-        if nick and ip:
-            return f"{nick}{ip}"
-
-        if nick:
-            return nick
-
-        return "오류값"
-
-    return "오류값"
+    return nick
 
 
 def get_gallery_name(soup):
@@ -227,6 +225,9 @@ def crawl_base(base_url, counter):
                 continue
 
             nick = get_writer(row)
+
+            if nick == "오류값":
+                continue
 
             counter[nick] += 1
 
