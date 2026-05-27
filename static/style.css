@@ -380,3 +380,57 @@ h1 {
         font-size: 11px;
     }
 }
+
+.notice-box {
+    background: #f7f7f7;
+
+    border: 1px solid #ebebeb;
+
+    border-radius: 22px;
+
+    padding: 20px 22px;
+
+    margin-bottom: 24px;
+
+    box-shadow:
+        0 6px 18px rgba(0, 0, 0, 0.03);
+}
+
+.notice-title {
+    font-size: 15px;
+    font-weight: 700;
+
+    margin-bottom: 10px;
+
+    color: #111111;
+}
+
+.notice-content {
+    font-size: 14px;
+
+    line-height: 1.7;
+
+    color: #555555;
+
+    word-break: break-word;
+}
+
+@media (max-width: 768px) {
+
+    .notice-box {
+        padding: 16px;
+        border-radius: 18px;
+
+        margin-bottom: 18px;
+    }
+
+    .notice-title {
+        font-size: 14px;
+        margin-bottom: 8px;
+    }
+
+    .notice-content {
+        font-size: 13px;
+        line-height: 1.6;
+    }
+}
