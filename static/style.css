@@ -65,6 +65,8 @@ h1 {
     color: white;
 
     font-size: 16px;
+
+    min-width: 0;
 }
 
 .search-bar input::placeholder {
@@ -76,6 +78,8 @@ h1 {
     height: 28px;
 
     background: #303030;
+
+    flex-shrink: 0;
 }
 
 .search-bar button {
@@ -93,6 +97,8 @@ h1 {
     justify-content: center;
 
     cursor: pointer;
+
+    flex-shrink: 0;
 
     transition:
         opacity 0.15s ease,
@@ -172,6 +178,8 @@ h1 {
     padding: 26px;
 
     border-bottom: 1px solid #ececec;
+
+    gap: 12px;
 }
 
 .result-info {
@@ -179,18 +187,24 @@ h1 {
     flex-direction: column;
 
     gap: 6px;
+
+    min-width: 0;
 }
 
 .result-info h2 {
     font-size: 24px;
 
     letter-spacing: -0.03em;
+
+    word-break: break-word;
 }
 
 .result-date {
     font-size: 14px;
 
     color: #666666;
+
+    word-break: break-word;
 }
 
 .copy-btn {
@@ -210,6 +224,8 @@ h1 {
     justify-content: center;
 
     cursor: pointer;
+
+    flex-shrink: 0;
 
     transition:
         transform 0.15s ease,
@@ -233,15 +249,19 @@ h1 {
     width: 100%;
 
     border-collapse: collapse;
+
+    table-layout: fixed;
 }
 
 .rank-table th,
 .rank-table td {
-    padding: 17px;
+    padding: 17px 10px;
 
     text-align: center;
 
     border-bottom: 1px solid #ececec;
+
+    word-break: break-word;
 }
 
 .rank-table th {
@@ -254,6 +274,26 @@ h1 {
     border-bottom: none;
 }
 
+.rank-table th:nth-child(1),
+.rank-table td:nth-child(1) {
+    width: 14%;
+}
+
+.rank-table th:nth-child(2),
+.rank-table td:nth-child(2) {
+    width: 46%;
+}
+
+.rank-table th:nth-child(3),
+.rank-table td:nth-child(3) {
+    width: 20%;
+}
+
+.rank-table th:nth-child(4),
+.rank-table td:nth-child(4) {
+    width: 20%;
+}
+
 .error-box {
     padding: 20px 24px;
 
@@ -262,6 +302,8 @@ h1 {
     background: #f5f5f5;
 
     color: #111111;
+
+    word-break: break-word;
 }
 
 @media (max-width: 768px) {
@@ -278,8 +320,12 @@ h1 {
 
     .search-bar {
         height: 58px;
+
         padding-left: 14px;
+
         border-radius: 22px;
+
+        margin-bottom: 24px;
     }
 
     .search-bar button {
@@ -301,8 +347,11 @@ h1 {
 
     .result-header {
         flex-direction: column;
+
         align-items: flex-start;
+
         gap: 12px;
+
         padding: 16px;
     }
 
@@ -317,25 +366,17 @@ h1 {
 
     .copy-btn {
         align-self: flex-end;
+
         width: 40px;
         height: 40px;
+
         border-radius: 10px;
     }
 
     .rank-table th,
     .rank-table td {
-        padding: 10px 6px;
-        font-size: 12px;
-    }
-}
+        padding: 8px 4px;
 
-@media (max-width: 768px) {
-
-    .result-box {
-        overflow-x: auto;
-    }
-
-    .rank-table {
-        min-width: 520px;
+        font-size: 11px;
     }
 }
