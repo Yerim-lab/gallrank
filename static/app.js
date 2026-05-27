@@ -163,7 +163,7 @@ async function copyResult() {
     let text = "";
 
     text += `${latestData.gallery}\n`;
-    text += `${latestData.range_text ?? "최근 100페이지 집계"}\n`;
+    text += `${latestData.range_text ?? "최근 100 페이지 집계"}\n`;
     text += `순위\t닉네임\t글수\t지분\n`;
 
     latestData.result.forEach(row => {
