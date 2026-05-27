@@ -215,7 +215,7 @@ def crawl_base(base_url, counter):
 
     page = 1
 
-    while page <= 100:
+    while page <= 1000:
 
         url = f"{base_url}&page={page}"
 
