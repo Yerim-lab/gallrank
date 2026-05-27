@@ -8,6 +8,10 @@ let latestData = null;
 let loading = false;
 
 
+/* =========================
+   아이콘
+========================= */
+
 function createSearchIcon() {
     return `
         <svg xmlns="http://www.w3.org/2000/svg"
@@ -67,6 +71,10 @@ function createCheckIcon() {
 }
 
 
+/* =========================
+   로딩
+========================= */
+
 function setLoading(state) {
 
     loading = state;
@@ -89,19 +97,24 @@ function setLoading(state) {
 }
 
 
+/* =========================
+   HTML Escape
+========================= */
+
 function escapeHtml(text) {
 
     const div = document.createElement("div");
 
-    div.innerText = text;
+    div.innerText = text ?? "";
 
     return div.innerHTML;
 }
 
 
-/**
- * 결과 렌더링
- */
+/* =========================
+   결과 렌더링
+========================= */
+
 function renderResult(data) {
 
     return `
@@ -138,7 +151,7 @@ function renderResult(data) {
 
                 <tbody>
 
-                    ${data.result.map(row => `
+                    ${(data.result || []).map(row => `
                         <tr>
                             <td>${row.rank}</td>
                             <td>${escapeHtml(row.nickname)}</td>
@@ -155,6 +168,10 @@ function renderResult(data) {
     `;
 }
 
+
+/* =========================
+   검색
+========================= */
 
 async function searchGallery() {
 
@@ -174,25 +191,57 @@ async function searchGallery() {
             `/api/rank?url=${encodeURIComponent(url)}`
         );
 
-        const data = await response.json();
+        const rawText = await response.text();
+
+        console.log("RAW RESPONSE:");
+        console.log(rawText);
+
+        let data;
+
+        try {
+
+            data = JSON.parse(rawText);
+
+        } catch (jsonError) {
+
+            console.error(jsonError);
+
+            throw new Error("서버가 JSON이 아닌 응답을 반환했습니다.");
+
+        }
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.error || `HTTP ${response.status}`
+            );
+
+        }
 
         if (data.error) {
+
             throw new Error(data.error);
+
         }
 
         latestData = data;
 
-        // 결과 성공 시 안내창 숨김
-        noticeBox.style.display = "none";
+        // 안내창 숨김
+        if (noticeBox) {
+            noticeBox.style.display = "none";
+        }
 
+        // 결과 출력
         result.innerHTML = renderResult(data);
 
     } catch (e) {
 
-        console.error(e);
+        console.error("SEARCH ERROR:", e);
 
-        // 에러 발생 시 안내창 다시 표시
-        noticeBox.style.display = "block";
+        // 안내창 다시 표시
+        if (noticeBox) {
+            noticeBox.style.display = "block";
+        }
 
         result.innerHTML = `
             <div class="error-box">
@@ -208,9 +257,10 @@ async function searchGallery() {
 }
 
 
-/**
- * 복사
- */
+/* =========================
+   복사
+========================= */
+
 async function copyResult() {
 
     if (!latestData) return;
@@ -227,28 +277,39 @@ async function copyResult() {
 
     });
 
-    await navigator.clipboard.writeText(text);
+    try {
 
-    const btn = document.querySelector(".copy-btn");
+        await navigator.clipboard.writeText(text);
 
-    if (!btn) return;
+        const btn = document.querySelector(".copy-btn");
 
-    btn.classList.add("copied");
+        if (!btn) return;
 
-    btn.innerHTML = createCheckIcon();
+        btn.classList.add("copied");
 
-    setTimeout(() => {
+        btn.innerHTML = createCheckIcon();
 
-        btn.classList.remove("copied");
+        setTimeout(() => {
 
-        btn.innerHTML = createCopyIcon();
+            btn.classList.remove("copied");
 
-    }, 1200);
+            btn.innerHTML = createCopyIcon();
+
+        }, 1200);
+
+    } catch (e) {
+
+        console.error("COPY ERROR:", e);
+
+    }
 }
 
 
-searchBtn.addEventListener("click", searchGallery);
+/* =========================
+   이벤트
+========================= */
 
+searchBtn.addEventListener("click", searchGallery);
 
 input.addEventListener("keydown", e => {
 
@@ -257,7 +318,6 @@ input.addEventListener("keydown", e => {
     }
 
 });
-
 
 pasteBtn.addEventListener("click", async () => {
 
@@ -269,7 +329,7 @@ pasteBtn.addEventListener("click", async () => {
 
     } catch (e) {
 
-        console.error(e);
+        console.error("PASTE ERROR:", e);
 
     }
 
