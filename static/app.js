@@ -206,7 +206,7 @@ async function searchGallery() {
 
             console.error(jsonError);
 
-            throw new Error("서버가 JSON이 아닌 응답을 반환했습니다.");
+            throw new Error("서버가 JSON이 아닌 응답을 반환했습니다. 다시 시도하세요.");
 
         }
 
