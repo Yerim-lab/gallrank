@@ -77,9 +77,11 @@ def detect_gallery_type(user_url: str):
     if not gid:
         return None, None
 
+    # 미니는 URL 기준 우선 판별
     if is_mini_url(url):
         return "mini", BASE["mini"].format(gid=gid)
 
+    # 마갤 -> 정식갤 순서
     for gtype in ["mgallery", "board"]:
 
         test_url = BASE[gtype].format(gid=gid)
@@ -107,9 +109,11 @@ def is_filtered_row(row):
 
     classes = row.get("class") or []
 
+    # notice 클래스
     if "notice" in classes:
         return True
 
+    # 번호칸 검사
     num = row.select_one(".gall_num")
 
     if num:
@@ -119,6 +123,7 @@ def is_filtered_row(row):
         if text in ["공지", "설문", "AD", "광고"]:
             return True
 
+    # 말머리 검사
     subject = row.select_one(".gall_subject")
 
     if subject:
@@ -133,15 +138,30 @@ def is_filtered_row(row):
 
 def get_writer(row):
 
-    nick_el = row.select_one("span.nickname")
+    addbox = row.select_one("div.addbox")
+
+    if not addbox:
+        return "오류값"
+
+    nick_el = addbox.select_one("span.nickname")
 
     if not nick_el:
         return "오류값"
 
     classes = nick_el.get("class", [])
 
+    # title 우선
     nick = nick_el.get("title", "").strip()
 
+    # em fallback
+    if not nick:
+
+        em = nick_el.select_one("em")
+
+        if em:
+            nick = em.get_text(strip=True)
+
+    # 최종 fallback
     if not nick:
         nick = nick_el.get_text(strip=True)
 
@@ -157,7 +177,7 @@ def get_writer(row):
     # 유동
     ip = ""
 
-    ip_el = row.select_one("span.ip")
+    ip_el = addbox.select_one("span.ip")
 
     if ip_el:
         ip = ip_el.get_text(strip=True).strip()
