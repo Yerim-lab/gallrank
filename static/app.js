@@ -2,6 +2,7 @@ const input = document.getElementById("urlInput");
 const searchBtn = document.getElementById("searchBtn");
 const pasteBtn = document.getElementById("pasteBtn");
 const result = document.getElementById("result");
+const noticeBox = document.getElementById("noticeBox");
 
 let latestData = null;
 let loading = false;
@@ -137,11 +138,20 @@ async function searchGallery() {
         if (data.error) throw new Error(data.error);
 
         latestData = data;
+
+        if (noticeBox) {
+            noticeBox.style.display = "none";
+        }
+
         result.innerHTML = renderResult(data);
 
     } catch (e) {
         console.error(e);
 
+        if (noticeBox) {
+            noticeBox.style.display = "block";
+        }
+        
         result.innerHTML = `
             <div class="error-box">
                 ${escapeHtml(e.message)}
