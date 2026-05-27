@@ -103,6 +103,8 @@ function setLoading(state) {
 
     loading = state;
 
+    searchBtn.disabled = state;
+
     if (state) {
 
         searchBtn.innerHTML = `
@@ -136,10 +138,41 @@ function escapeHtml(text) {
 
 
 /* =========================
+   집계 문구 생성
+========================= */
+
+function getRangeText(data) {
+
+    if (data.range_text) {
+        return data.range_text;
+    }
+
+    if (typeof data.pages === "number") {
+        return `최근 ${data.pages}페이지 집계`;
+    }
+
+    return "최근 페이지 집계";
+}
+
+
+/* =========================
    결과 렌더링
 ========================= */
 
 function renderResult(data) {
+
+    const rows = (data.result || []).map(row => {
+
+        return `
+            <tr>
+                <td>${row.rank}</td>
+                <td>${escapeHtml(row.nickname)}</td>
+                <td>${row.count}</td>
+                <td>${row.share}%</td>
+            </tr>
+        `;
+
+    }).join("");
 
     return `
         <div class="result-box">
@@ -151,7 +184,7 @@ function renderResult(data) {
                     <h2>${escapeHtml(data.gallery)}</h2>
 
                     <div class="result-date">
-                        ${escapeHtml(data.range_text ?? "최근 1,000 페이지 집계")}
+                        ${escapeHtml(getRangeText(data))}
                     </div>
 
                 </div>
@@ -174,20 +207,25 @@ function renderResult(data) {
                 </thead>
 
                 <tbody>
-
-                    ${(data.result || []).map(row => `
-                        <tr>
-                            <td>${row.rank}</td>
-                            <td>${escapeHtml(row.nickname)}</td>
-                            <td>${row.count}</td>
-                            <td>${row.share}%</td>
-                        </tr>
-                    `).join("")}
-
+                    ${rows}
                 </tbody>
 
             </table>
 
+        </div>
+    `;
+}
+
+
+/* =========================
+   에러 렌더링
+========================= */
+
+function renderError(message) {
+
+    return `
+        <div class="error-box">
+            ${escapeHtml(message)}
         </div>
     `;
 }
@@ -209,7 +247,6 @@ async function searchGallery() {
 
     result.innerHTML = "";
 
-    // 검색 시작 시 안내창 유지
     showNotice();
 
     try {
@@ -231,7 +268,7 @@ async function searchGallery() {
 
         } catch (jsonError) {
 
-            console.error(jsonError);
+            console.error("JSON PARSE ERROR:", jsonError);
 
             throw new Error(
                 "서버가 JSON이 아닌 응답을 반환했습니다."
@@ -248,31 +285,24 @@ async function searchGallery() {
         }
 
         if (data.error) {
-
             throw new Error(data.error);
-
         }
 
         latestData = data;
 
-        // 결과 출력
         result.innerHTML = renderResult(data);
 
-        // 결과 성공 시 안내창 숨김
         hideNotice();
 
     } catch (e) {
 
         console.error("SEARCH ERROR:", e);
 
-        // 에러 시 안내창 다시 표시
         showNotice();
 
-        result.innerHTML = `
-            <div class="error-box">
-                ${escapeHtml(e.message)}
-            </div>
-        `;
+        result.innerHTML = renderError(
+            e.message || "알 수 없는 오류가 발생했습니다."
+        );
 
     } finally {
 
@@ -293,12 +323,17 @@ async function copyResult() {
     let text = "";
 
     text += `${latestData.gallery}\n`;
-    text += `${latestData.range_text ?? "최근 1,000 페이지 집계"}\n`;
+    text += `${getRangeText(latestData)}\n`;
     text += `순위\t닉네임\t글수\t지분\n`;
 
     latestData.result.forEach(row => {
 
-        text += `${row.rank}\t${row.nickname}\t${row.count}\t${row.share}%\n`;
+        text += (
+            `${row.rank}\t` +
+            `${row.nickname}\t` +
+            `${row.count}\t` +
+            `${row.share}%\n`
+        );
 
     });
 
@@ -363,6 +398,11 @@ pasteBtn.addEventListener("click", async () => {
 
 
 window.copyResult = copyResult;
+
+
+/* =========================
+   초기화
+========================= */
 
 setLoading(false);
 showNotice();
